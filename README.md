@@ -6,6 +6,41 @@ inspired by neuroscience and personality theory. The code serves as a
 foundation for building a production-quality system that can power a
 Tamagotchi-like experience via messaging platforms.
 
+## 🎯 Quick Start
+
+```bash
+# Install dependencies
+pip install -r requirements.txt
+
+# Run the simulation
+python -m tamagotchi.virtual_pet
+
+# Start the API server
+uvicorn tamagotchi.server:app --port 8080
+
+# Test the API
+curl -X POST http://localhost:8080/webhook \
+  -H "Content-Type: application/json" \
+  -d '{"user_id": "user1", "message": "Olá!"}'
+```
+
+## 📚 Documentation
+
+- **[Testing Guide](TESTING.md)** - Comprehensive testing instructions
+- **[Deployment Guide](DEPLOYMENT.md)** - Production deployment to GCP
+- **[Examples](EXAMPLES.md)** - Code examples and use cases
+
+## ✨ Key Features
+
+- **Multimodal Chat**: Text and image processing
+- **Evolving Personality**: Traits and drives that change with interactions
+- **Hybrid Memory**: Episodic, semantic, and photographic memory
+- **Natural Language**: Integration with Google Gemini for realistic responses
+- **Image Recognition**: Google Cloud Vision for understanding images
+- **Persistent Storage**: Firestore integration with in-memory fallback
+- **MCP Integration**: AskIt-inspired client and Nerve-style configuration
+- **Production Ready**: Dockerized with Cloud Run support
+
 ## Project Structure
 
 This repository is organized into modular Python files that together
@@ -40,14 +75,19 @@ layers, and a production-ready HTTP server.
 ## Running a Simulation
 
 To test the core logic, you can run the simulation provided in
-`virtual_pet.py`:
+`virtual_pet.py`. From the parent directory of the repository:
 
 ```bash
-python virtual_pet.py
+cd /path/to/parent/directory
+python -m tamagotchi.virtual_pet
 ```
 
 This will simulate a simple conversation between a user and the pet, showing
 how drives, traits, and memory evolve over time.
+
+**Note:** The project uses relative imports and must be run as a package.
+If you cloned the repository, navigate to the parent directory and use the
+`-m` flag with Python to execute modules.
 
 ## Running the API Server
 
@@ -61,15 +101,24 @@ If you want to enable Firestore persistence, set the environment variables
 `GOOGLE_APPLICATION_CREDENTIALS` (pointing to your service account JSON) and
 `USE_FIRESTORE=true`. Otherwise the server will store pet state in memory.
 
-Start the server with Uvicorn:
+Start the server with Uvicorn from the parent directory:
 
 ```bash
-uvicorn server:app --reload --port 8080
+cd /path/to/parent/directory
+uvicorn tamagotchi.server:app --reload --port 8080
 ```
 
 Then send a POST request to `http://localhost:8080/webhook` with a JSON body
 containing `user_id` and `message`. The server returns a JSON response with
 the pet's reply.
+
+**Example using curl:**
+
+```bash
+curl -X POST http://localhost:8080/webhook \
+  -H "Content-Type: application/json" \
+  -d '{"user_id": "user123", "message": "Olá, pet!"}'
+```
 
 To send an image instead of a text message, include an `image` field with a
 base64-encoded string. The `message` field can be empty in this case. The
@@ -194,3 +243,67 @@ include additional fields to tweak behavior without touching code.
    integrate with other systems (e.g., analytics, compliance services),
    extend `mcp_manifest.json` and implement the corresponding endpoints in
    `server.py` or separate modules following the same pattern.
+
+## Architecture Overview
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                     User Interface                       │
+│              (WhatsApp / Web / API Client)               │
+└─────────────────────┬───────────────────────────────────┘
+                      │
+                      ▼
+┌─────────────────────────────────────────────────────────┐
+│                   FastAPI Server                         │
+│                   (server.py)                            │
+└─────────┬───────────────────────────────────────────────┘
+          │
+          ▼
+┌─────────────────────────────────────────────────────────┐
+│                  Virtual Pet Engine                      │
+│                  (virtual_pet.py)                        │
+│  ┌────────────┐  ┌─────────────┐  ┌─────────────────┐  │
+│  │ Pet State  │  │   Memory    │  │ Language Gen    │  │
+│  │ (drives,   │  │  (episodic, │  │ (Gemini API/    │  │
+│  │  traits)   │  │  semantic)  │  │  Fallback)      │  │
+│  └────────────┘  └─────────────┘  └─────────────────┘  │
+└─────────┬───────────────────────────────────────────────┘
+          │
+          ▼
+┌─────────────────────────────────────────────────────────┐
+│              Persistence & External APIs                 │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  │
+│  │  Firestore   │  │ Vision API   │  │  Gemini API  │  │
+│  └──────────────┘  └──────────────┘  └──────────────┘  │
+└─────────────────────────────────────────────────────────┘
+```
+
+## Suggested Improvements
+
+Based on the project analysis, here are recommended improvements:
+
+### High Priority
+1. **Add proper test suite** - Unit tests for all modules
+2. **Enhance error handling** - Better error messages and recovery
+3. **Add rate limiting** - Prevent API abuse
+4. **Implement logging** - Structured logging for debugging
+
+### Medium Priority
+5. **Add authentication** - Secure the webhook endpoint
+6. **Implement metrics** - Track usage and performance
+7. **Add caching** - Reduce API calls and improve speed
+8. **WhatsApp templates** - Pre-approved message templates
+
+### Long Term
+9. **Vector database** - Scalable semantic search (Qdrant, pgvector)
+10. **A/B testing** - Test different personalities
+11. **Multi-language** - Support languages beyond Portuguese
+12. **Advanced NLP** - Sentiment analysis, intent detection
+
+## Contributing
+
+Contributions are welcome! Please read the documentation and ensure all tests pass before submitting a PR.
+
+## License
+
+This project is provided as-is for educational and commercial use.
