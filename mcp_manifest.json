@@ -1,0 +1,95 @@
+{
+  "memory_server": {
+    "description": "Manages episodic and semantic memories for each pet.",
+    "methods": {
+      "add_episode": {
+        "args": [
+          "text",
+          "salience"
+        ],
+        "returns": "void"
+      },
+      "consolidate": {
+        "args": [
+          "threshold"
+        ],
+        "returns": "void"
+      },
+      "recall": {
+        "args": [
+          "query",
+          "top_k"
+        ],
+        "returns": "List[str]"
+      }
+    }
+  },
+  "pet_state_server": {
+    "description": "Handles pet drives, traits, habits, and behavior generation.",
+    "methods": {
+      "tick": {
+        "args": [
+          "minutes"
+        ],
+        "returns": "void"
+      },
+      "update_from_interaction": {
+        "args": [
+          "text",
+          "response_delay"
+        ],
+        "returns": "void"
+      },
+      "generate_intentions": {
+        "args": [],
+        "returns": "List[Tuple[str, float]]"
+      },
+      "select_action": {
+        "args": [],
+        "returns": "str"
+      }
+    }
+  },
+  "whatsapp_server": {
+    "description": "Facilitates sending and receiving messages via WhatsApp.",
+    "methods": {
+      "check_24h_window": {
+        "args": [],
+        "returns": "bool"
+      },
+      "send_template": {
+        "args": [
+          "name",
+          "params"
+        ],
+        "returns": "message_id"
+      },
+      "send_freeform": {
+        "args": [
+          "text"
+        ],
+        "returns": "message_id"
+      }
+    }
+  },
+  "compliance_server": {
+    "description": "Handles user consent, data export, and deletion requests.",
+    "methods": {
+      "log_consent": {
+        "args": [
+          "channel",
+          "scope"
+        ],
+        "returns": "void"
+      },
+      "export_data": {
+        "args": [],
+        "returns": "url"
+      },
+      "erase_me": {
+        "args": [],
+        "returns": "status"
+      }
+    }
+  }
+}

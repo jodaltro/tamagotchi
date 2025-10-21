@@ -1,0 +1,131 @@
+"""
+Firestore-based storage for pet states and memories.
+
+This module provides helper functions to persist and retrieve `PetState` and
+`MemoryStore` instances from Google Cloud Firestore. It abstracts away the
+serialization logic and hides the Firestore client details from the rest of
+the application. When Firestore is not configured (no credentials or the
+`USE_FIRESTORE` environment variable is set to false), the module falls back
+to an in-memory dictionary to store state. This makes the code easy to run
+locally while providing a clear path to persistent storage in production.
+
+To enable Firestore persistence, ensure that:
+
+1. A Google Cloud project is created with Firestore enabled.
+2. A service account with Firestore access is created and its JSON key
+   downloaded.
+3. The `GOOGLE_APPLICATION_CREDENTIALS` environment variable points to this
+   JSON key file.
+4. The `USE_FIRESTORE` environment variable is set to `true` (default).
+
+If any of these conditions are not met, the code will operate in memory
+without persistence.
+"""
+
+import os
+from typing import Dict, Optional
+
+# Attempt to import Firestore client. If unavailable, we'll use in-memory fallback.
+try:
+    from google.cloud import firestore  # type: ignore
+    from google.cloud.firestore import Client  # type: ignore
+except Exception:
+    firestore = None  # type: ignore
+    Client = None  # type: ignore
+
+from .pet_state import PetState
+from .memory_store import MemoryStore
+
+# In-memory fallback store keyed by user ID
+_IN_MEMORY_STORE: Dict[str, Dict] = {}
+
+
+def _init_firestore_client() -> Optional[Client]:
+    """Create a Firestore client if credentials are available and enabled."""
+    # If the Firestore library isn't available, always return None
+    if firestore is None:
+        return None
+    use_firestore = os.getenv("USE_FIRESTORE", "true").lower() in ("true", "1", "yes")
+    credentials_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+    if use_firestore and credentials_path and os.path.exists(credentials_path):
+        try:
+            return firestore.Client()
+        except Exception:
+            # Fall back to None if client init fails (e.g., invalid credentials)
+            return None
+    return None
+
+
+_FIRESTORE_CLIENT: Optional[Client] = _init_firestore_client()
+
+
+def pet_state_to_dict(state: PetState) -> Dict:
+    """Serialize a PetState into a dictionary suitable for storage."""
+    return {
+        "drives": state.drives,
+        "traits": state.traits,
+        "habits": state.habits,
+        "stage": state.stage,
+        "last_user_message": state.last_user_message.isoformat(),
+        "episodic": [
+            {
+                "kind": item.kind,
+                "text": item.text,
+                "salience": item.salience,
+                "timestamp": item.timestamp.isoformat(),
+            }
+            for item in state.memory.episodic
+        ],
+        "semantic": state.memory.semantic,
+    }
+
+
+def dict_to_pet_state(data: Dict) -> PetState:
+    """Deserialize a dictionary back into a PetState instance."""
+    memory = MemoryStore()
+    # Populate episodic memories
+    for ep in data.get("episodic", []):
+        memory.add_episode(ep.get("text", ""), salience=float(ep.get("salience", 0.5)))
+    # Set semantic memories
+    memory.semantic = {str(k): float(v) for k, v in data.get("semantic", {}).items()}
+    # Create PetState
+    state = PetState()
+    state.drives = {k: float(v) for k, v in data.get("drives", {}).items()}
+    state.traits = {k: float(v) for k, v in data.get("traits", {}).items()}
+    state.habits = {k: float(v) for k, v in data.get("habits", {}).items()}
+    state.stage = data.get("stage", "infante")
+    if "last_user_message" in data:
+        try:
+            from datetime import datetime
+
+            state.last_user_message = datetime.fromisoformat(data["last_user_message"])
+        except Exception:
+            pass
+    state.memory = memory
+    return state
+
+
+def get_pet_data(user_id: str) -> PetState:
+    """Retrieve a PetState for the given user ID from Firestore or memory."""
+    global _IN_MEMORY_STORE
+    if _FIRESTORE_CLIENT is not None:
+        doc_ref = _FIRESTORE_CLIENT.collection("pets").document(user_id)
+        doc = doc_ref.get()
+        if doc.exists:
+            data = doc.to_dict()
+            return dict_to_pet_state(data)
+    # Fallback to in-memory
+    if user_id in _IN_MEMORY_STORE:
+        return dict_to_pet_state(_IN_MEMORY_STORE[user_id])
+    # Create a new state
+    return PetState()
+
+
+def save_pet_data(user_id: str, state: PetState) -> None:
+    """Persist the given PetState under the user ID."""
+    global _IN_MEMORY_STORE
+    data = pet_state_to_dict(state)
+    if _FIRESTORE_CLIENT is not None:
+        _FIRESTORE_CLIENT.collection("pets").document(user_id).set(data)
+    else:
+        _IN_MEMORY_STORE[user_id] = data

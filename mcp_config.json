@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "memory_server": {
+      "transport": "local",
+      "disabled": false
+    },
+    "pet_state_server": {
+      "transport": "local",
+      "disabled": false
+    }
+  }
+}

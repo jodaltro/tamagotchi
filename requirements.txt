@@ -1,0 +1,22 @@
+# Dependencies for running the virtual pet in a server environment
+
+# FastAPI and Uvicorn provide an asynchronous web framework and server
+fastapi==0.111.0
+uvicorn==0.29.0
+
+# Google Cloud Firestore client for persistent storage
+google-cloud-firestore==2.11.1
+
+# Pydantic is used by FastAPI for data validation
+pydantic==2.6.0
+
+# Additional dependencies for advanced features
+numpy>=1.22.0
+opencv-python>=4.6.0
+# Google Cloud Vision for image recognition and Google Generative AI for language generation.
+google-cloud-vision>=3.4.2
+google-generativeai>=0.0.4
+
+# YAML parsing for Nerve-inspired configuration
+PyYAML>=5.3.1
+
