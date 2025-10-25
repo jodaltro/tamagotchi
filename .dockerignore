@@ -55,11 +55,6 @@ htmlcov/
 # Temporary files
 /tmp/
 
-# Docker
-Dockerfile
-docker-compose.yml
-.dockerignore
-
 # Documentation (we want to keep examples and manifests)
 *.md
 !README.md

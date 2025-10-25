@@ -7,14 +7,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Set working directory to parent directory
+# Set working directory
 WORKDIR /app
 
 # Copy requirements and install dependencies
-COPY requirements.txt ./tamagotchi/
-RUN pip install --no-cache-dir -r tamagotchi/requirements.txt
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy project files
+# Copy project files to create the tamagotchi package
 COPY . ./tamagotchi/
 
 # Expose the port used by Uvicorn

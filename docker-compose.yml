@@ -17,12 +17,11 @@ services:
       # Application Configuration
       - PYTHONUNBUFFERED=1
       - PORT=8080
-    volumes:
+    volumes: []
       # Mount credentials directory if using Google Cloud services
       # Create a 'credentials' directory and place your service account JSON file there
-      # Then uncomment the following line:
+      # Then uncomment the following line and remove the empty array above:
       # - ./credentials:/app/credentials:ro
-      []
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
