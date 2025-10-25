@@ -26,12 +26,17 @@ curl -X POST http://localhost:8080/webhook \
 
 ## 📚 Documentation
 
+- **[Personality Engine Guide](PERSONALITY_ENGINE.md)** - Complete guide to the personality system
 - **[Testing Guide](TESTING.md)** - Comprehensive testing instructions
 - **[Deployment Guide](DEPLOYMENT.md)** - Production deployment to GCP
 - **[Examples](EXAMPLES.md)** - Code examples and use cases
 
 ## ✨ Key Features
 
+- **Unique Personalities**: Research-based personality engine using Big Five model
+  - 8 predefined personality archetypes
+  - Random unique personalities for each pet
+  - Subtle personality evolution through interactions
 - **Multimodal Chat**: Text and image processing
 - **Evolving Personality**: Traits and drives that change with interactions
 - **Hybrid Memory**: Episodic, semantic, and photographic memory
@@ -49,8 +54,11 @@ layers, and a production-ready HTTP server.
 
 - **memory_store.py**: Defines the `MemoryStore` and `MemoryItem` classes for
   handling episodic and semantic memories.
+- **personality_engine.py**: Implements the research-based personality system
+  using the Big Five (OCEAN) model and temperament dimensions. Provides
+  personality archetypes, behavior modulation, and personality evolution.
 - **pet_state.py**: Implements the `PetState` class, which manages drives,
-  traits, habits, and memory interactions.
+  traits, habits, personality, and memory interactions.
 - **virtual_pet.py**: Provides the `VirtualPet` class that wraps a `PetState`
   instance and exposes methods for processing user messages and generating
   responses. When run directly, this module simulates a simple conversation
@@ -60,8 +68,8 @@ layers, and a production-ready HTTP server.
   completeness but superseded by `server.py` for production use.
 - **firestore_store.py**: Implements optional persistence using Google Cloud
   Firestore. When Firestore credentials are configured, pet states and
-  memories are stored per user; otherwise the module falls back to an
-  in-memory dictionary.
+  memories (including personality) are stored per user; otherwise the module
+  falls back to an in-memory dictionary.
 - **server.py**: Implements a FastAPI server with a `/webhook` endpoint that
   processes incoming messages and returns the pet's response. The server
   integrates with `firestore_store.py` for persistence.
