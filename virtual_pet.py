@@ -18,20 +18,30 @@ from .image_recognition import extract_features, classify_image
 from .nerve_integration import load_agent_config
 
 class VirtualPet:
-    def __init__(self) -> None:
+    def __init__(self, personality_archetype: Optional[str] = None) -> None:
         self.state = PetState()
-        # Load Nerve‑style configuration on initialization. This allows
-        # non‑developers to modify the pet's behavior (e.g. tone) via YAML.
+        
+        # Initialize personality engine based on configuration or random
         try:
             config = load_agent_config()
         except Exception:
             config = {}
-        # Extract system prompt if available; default to empty string.
-        self.system_prompt: str = ""
+        
+        # Check if personality archetype is specified in config
         if isinstance(config, dict):
             agent_section = config.get("agent") or {}
             if isinstance(agent_section, dict):
                 self.system_prompt = agent_section.get("system_prompt") or ""
+                # Get personality archetype from config if not provided
+                if not personality_archetype:
+                    personality_archetype = agent_section.get("personality_archetype")
+            else:
+                self.system_prompt = ""
+        else:
+            self.system_prompt = ""
+        
+        # Initialize personality (random if no archetype specified)
+        self.state.initialize_personality(archetype=personality_archetype)
 
     def user_message(self, text: str, delay: Optional[float] = None) -> None:
         """Process a user message and update the pet state."""
@@ -74,6 +84,7 @@ class VirtualPet:
     def pet_response(self) -> str:
         """Generate the pet's response based on the selected action."""
         action = self.state.select_action()
+        
         # Build a prompt based on the selected action and available memories
         if action == "ask_question":
             recents = self.state.memory.recall()
@@ -95,14 +106,26 @@ class VirtualPet:
         else:
             context = ""
             prompt = "Responda de forma neutra e educada."
+        
+        # Build the full context with personality and system prompt
+        full_context = context or ""
+        
+        # Add personality description to context if available
+        personality_desc = self.state.get_personality_description()
+        if personality_desc:
+            if full_context:
+                full_context = f"{personality_desc}\n{full_context}"
+            else:
+                full_context = personality_desc
+        
         # Prepend the system prompt to the context if defined. This allows
         # global instructions (e.g. tone) to influence the generated reply.
-        full_context = context or ""
         if self.system_prompt:
             if full_context:
                 full_context = f"{self.system_prompt}\n{full_context}"
             else:
                 full_context = self.system_prompt
+        
         # Use the language generation utility; it falls back gracefully
         return generate_text(prompt, full_context)
 

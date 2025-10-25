@@ -5,6 +5,20 @@ agent:
   # prepended to the conversational context before calling the language
   # generation function.
   system_prompt: "Você é um pet virtual orgânico com personalidade própria, inspirado no cérebro humano. Interaja de forma amigável, curiosa e sempre em português informal. Demonstre empatia, senso de humor e evolução ao longo do tempo."
+  
+  # Personality archetype (optional)
+  # Available archetypes:
+  # - curious_explorer: High openness, loves learning and asking questions
+  # - playful_companion: Energetic, fun-loving, social
+  # - gentle_caregiver: Compassionate, nurturing, calm
+  # - wise_observer: Thoughtful, insightful, introverted
+  # - energetic_enthusiast: Very active and enthusiastic
+  # - calm_philosopher: Peaceful, stable, reflective
+  # - artistic_dreamer: Creative, imaginative, emotional
+  # - balanced_friend: Well-rounded personality
+  # If not specified, each pet gets a random unique personality
+  personality_archetype: null  # Set to archetype name or leave as null for random
+  
   # The tasks section can be used to tweak the relative importance of
   # different actions the pet can take. These weights are not currently
   # consumed by the implementation but serve as a reference for future

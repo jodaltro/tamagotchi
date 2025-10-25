@@ -61,12 +61,16 @@ _FIRESTORE_CLIENT: Optional[Client] = _init_firestore_client()
 
 def pet_state_to_dict(state: PetState) -> Dict:
     """Serialize a PetState into a dictionary suitable for storage."""
+    # Save personality state before serialization
+    personality_data = state.save_personality_state()
+    
     return {
         "drives": state.drives,
         "traits": state.traits,
         "habits": state.habits,
         "stage": state.stage,
         "last_user_message": state.last_user_message.isoformat(),
+        "personality_data": personality_data,  # Store personality profile
         "episodic": [
             {
                 "kind": item.kind,
@@ -102,6 +106,15 @@ def dict_to_pet_state(data: Dict) -> PetState:
         except Exception:
             pass
     state.memory = memory
+    
+    # Restore personality if available
+    personality_data = data.get("personality_data")
+    if personality_data:
+        state.initialize_personality(profile_data=personality_data)
+    else:
+        # Initialize new random personality for existing pets without personality
+        state.initialize_personality()
+    
     return state
 
 

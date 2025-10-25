@@ -12,9 +12,10 @@ generating intentions, and selecting the best action.
 import random
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Optional
 
 from .memory_store import MemoryStore
+from .personality_engine import PersonalityEngine, PersonalityProfile
 
 @dataclass
 class PetState:
@@ -46,12 +47,23 @@ class PetState:
     stage: str = "infante"
     last_user_message: datetime = field(default_factory=datetime.utcnow)
     memory: MemoryStore = field(default_factory=MemoryStore)
+    personality: Optional[PersonalityEngine] = None
+    # Store personality profile data for serialization
+    personality_data: Dict[str, float] = field(default_factory=dict)
 
     def tick(self, minutes: float = 30.0) -> None:
         """Advance time and decay drives toward equilibrium."""
         decay = minutes / (24 * 60)  # fraction of a day
-        for k, v in self.drives.items():
-            self.drives[k] = max(0.0, min(1.0, v + (0.5 - v) * decay))
+        
+        # Apply personality-modulated decay if personality engine is available
+        if self.personality:
+            for k, v in self.drives.items():
+                decay_rate = self.personality.calculate_drive_decay_rate(k)
+                adjusted_decay = decay * decay_rate
+                self.drives[k] = max(0.0, min(1.0, v + (0.5 - v) * adjusted_decay))
+        else:
+            for k, v in self.drives.items():
+                self.drives[k] = max(0.0, min(1.0, v + (0.5 - v) * decay))
 
     def update_from_interaction(self, text: str, response_delay: float) -> None:
         """Update drives, traits, and habits based on user input and response time."""
@@ -78,6 +90,13 @@ class PetState:
         # Record the interaction in memory
         self.memory.add_episode(text, salience=0.5)
         self.last_user_message = datetime.utcnow()
+        
+        # Update personality based on interaction if personality engine is available
+        if self.personality:
+            # Estimate interaction quality based on responsiveness
+            quality = 1.0 if response_delay < self.habits["average_response_time"] else 0.5
+            interaction_type = "positive" if quality > 0.7 else "neutral"
+            self.personality.process_interaction_feedback(interaction_type, quality)
 
     def generate_intentions(self) -> List[Tuple[str, float]]:
         """Generate candidate actions with utilities based on drives and traits."""
@@ -108,10 +127,56 @@ class PetState:
                 util = 0.1
             util = util * active_factor + noise()
             intentions.append((action, util))
-        intentions.sort(key=lambda x: x[1], reverse=True)
+        
+        # Apply personality modulation if available
+        if self.personality:
+            intentions = self.personality.modulate_action_utilities(intentions)
+        else:
+            intentions.sort(key=lambda x: x[1], reverse=True)
+        
         return intentions
 
     def select_action(self) -> str:
         """Select the highest-utility action."""
         intentions = self.generate_intentions()
         return intentions[0][0] if intentions else "idle"
+    
+    def initialize_personality(
+        self, 
+        archetype: Optional[str] = None,
+        profile_data: Optional[Dict[str, float]] = None
+    ) -> None:
+        """
+        Initialize the personality engine for this pet.
+        
+        Args:
+            archetype: Optional personality archetype name
+            profile_data: Optional dictionary of personality dimension values
+        """
+        from .personality_engine import create_personality
+        
+        if profile_data:
+            # Restore personality from saved data
+            profile = PersonalityProfile(**profile_data)
+            self.personality = PersonalityEngine(profile)
+            self.personality_data = profile_data
+        elif archetype:
+            # Create personality from archetype
+            self.personality = create_personality(archetype=archetype)
+            self.personality_data = self.personality.profile.to_dict()
+        else:
+            # Create random personality for uniqueness
+            self.personality = create_personality(random_variation=True)
+            self.personality_data = self.personality.profile.to_dict()
+    
+    def get_personality_description(self) -> str:
+        """Get a natural language description of the pet's personality."""
+        if self.personality:
+            return self.personality.generate_personality_prompt()
+        return ""
+    
+    def save_personality_state(self) -> Dict[str, float]:
+        """Save personality state for persistence."""
+        if self.personality:
+            self.personality_data = self.personality.profile.to_dict()
+        return self.personality_data
