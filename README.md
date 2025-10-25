@@ -8,6 +8,22 @@ Tamagotchi-like experience via messaging platforms.
 
 ## 🎯 Quick Start
 
+### Using Docker (Recommended)
+
+```bash
+# Start with Docker Compose
+docker compose up -d
+
+# Test the API
+curl -X POST http://localhost:8080/webhook \
+  -H "Content-Type: application/json" \
+  -d '{"user_id": "user1", "message": "Olá!"}'
+```
+
+See **[Docker Setup Guide](DOCKER.md)** for detailed instructions.
+
+### Manual Setup
+
 ```bash
 # Install dependencies
 pip install -r requirements.txt
@@ -26,6 +42,7 @@ curl -X POST http://localhost:8080/webhook \
 
 ## 📚 Documentation
 
+- **[Docker Setup Guide](DOCKER.md)** - Run the project with Docker and Docker Compose
 - **[Personality Engine Guide](PERSONALITY_ENGINE.md)** - Complete guide to the personality system
 - **[Testing Guide](TESTING.md)** - Comprehensive testing instructions
 - **[Deployment Guide](DEPLOYMENT.md)** - Production deployment to GCP

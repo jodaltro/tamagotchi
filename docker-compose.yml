@@ -1,0 +1,31 @@
+services:
+  tamagotchi:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: tamagotchi-pet
+    ports:
+      - "8080:8080"
+    environment:
+      # Firestore Configuration
+      - USE_FIRESTORE=${USE_FIRESTORE:-false}
+      # Google Cloud Credentials (optional)
+      - GOOGLE_APPLICATION_CREDENTIALS=${GOOGLE_APPLICATION_CREDENTIALS:-}
+      # Google Generative AI API Key (optional)
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY:-}
+      - GENAI_API_KEY=${GENAI_API_KEY:-}
+      # Application Configuration
+      - PYTHONUNBUFFERED=1
+      - PORT=8080
+    volumes: []
+      # Mount credentials directory if using Google Cloud services
+      # Create a 'credentials' directory and place your service account JSON file there
+      # Then uncomment the following line and remove the empty array above:
+      # - ./credentials:/app/credentials:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
