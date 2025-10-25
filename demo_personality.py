@@ -8,7 +8,6 @@ personalities and shows how they respond to the same prompts.
 """
 
 from tamagotchi.virtual_pet import VirtualPet
-from tamagotchi.personality_engine import PersonalityArchetype
 
 
 def print_separator():
