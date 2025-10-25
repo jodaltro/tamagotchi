@@ -4,17 +4,18 @@ FROM python:3.11-slim
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libgl1 \
     libglib2.0-0 \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Set working directory
+# Set working directory to parent directory
 WORKDIR /app
 
 # Copy requirements and install dependencies
-COPY requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt
+COPY requirements.txt ./tamagotchi/
+RUN pip install --no-cache-dir -r tamagotchi/requirements.txt
 
 # Copy project files
-COPY . .
+COPY . ./tamagotchi/
 
 # Expose the port used by Uvicorn
 EXPOSE 8080
@@ -24,4 +25,4 @@ ENV PYTHONUNBUFFERED=1
 ENV USE_FIRESTORE=false
 
 # Command to run the FastAPI app with Uvicorn
-CMD ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "8080"]
+CMD ["uvicorn", "tamagotchi.server:app", "--host", "0.0.0.0", "--port", "8080"]
