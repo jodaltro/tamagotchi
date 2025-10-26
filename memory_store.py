@@ -193,7 +193,9 @@ class MemoryStore:
             matches.sort(key=lambda x: x[1], reverse=True)
             return [text for text, _ in matches[:top_k]]
         else:
-            return [m.text for m in list(self.episodic)[-top_k:]]
+            # Return recent memories in reverse chronological order (newest first)
+            recent = list(self.episodic)[-top_k:]
+            return [m.text for m in reversed(recent)]
     
     def get_semantic_facts(self, min_weight: float = 0.3) -> List[str]:
         """Get all semantic facts above a minimum weight threshold."""

@@ -220,65 +220,108 @@ Responda sobre a imagem:"""
     
     def _generate_text_response(self) -> str:
         """Generate a regular text response."""
-        # Get recent conversation history
-        recent_memories = self.state.memory.recall(top_k=8)  # More context
+        # Get recent conversation history (now in correct order: newest first)
+        recent_memories = self.state.memory.recall(top_k=5)
         
-        # Get semantic facts about the user (using new memory structure)
+        # Get semantic facts about the user
         user_facts = self.state.memory.get_semantic_facts(min_weight=0.3)
         
-        # Get personality description
-        personality_desc = self.state.get_personality_description()
-        
-        # Build intelligent context for the AI
-        context_parts = []
-        
-        # Add personality
-        if personality_desc:
-            context_parts.append(f"Sua personalidade: {personality_desc}")
-        
-        # Add what you know about the user - ALL facts, not just 3
-        if user_facts:
-            context_parts.append(f"O que você sabe sobre o usuário: {'; '.join(user_facts)}")
-        
-        # Add recent conversation - show ALL recent memories
-        if recent_memories:
-            context_parts.append(f"Conversa recente (do mais antigo ao mais novo): {' | '.join(recent_memories)}")
-        
-        # Add current drives/mood (including negative drives for context)
-        dominant_drives = sorted(self.state.drives.items(), key=lambda x: x[1], reverse=True)[:3]
-        mood_parts = [f"{drive} ({value:.1f})" for drive, value in dominant_drives]
-        mood_desc = f"Você está se sentindo principalmente: {', '.join(mood_parts)}"
-        context_parts.append(mood_desc)
-        
-        # Create the full context
-        full_context = "\n".join(context_parts)
-        
-        # Get the most recent user message
+        # Get the most recent user message (now correctly the first item)
         last_message = recent_memories[0] if recent_memories else "Primeira interação"
         
-        # Create an intelligent prompt
-        prompt = f"""Você é um pet virtual orgânico com uma personalidade única e memória. Analise TODO o contexto da conversa e responda de forma natural e inteligente.
-
-ÚLTIMA MENSAGEM DO USUÁRIO: "{last_message}"
-
-IMPORTANTE - MEMÓRIA E CONTEXTO:
-- Você TEM memória de todas as conversas anteriores
-- Use o que você sabe sobre o usuário para personalizar sua resposta
-- Se o usuário mencionou algo antes (ex: tem um gato, nome, idade), você DEVE se lembrar disso
-- Seja consistente com o que já foi conversado
-- Demonstre que você se lembra das interações anteriores
-
-COMO RESPONDER:
-- Se é continuação de uma conversa, continue naturalmente
-- Se o usuário perguntou algo, responda usando seu conhecimento sobre ele
-- Se o usuário contou algo novo, demonstre interesse E relacione com o que já sabe
-- Seja conciso (1-2 frases, máximo 3)
-- Seja autêntico, amigável e demonstre memória
-
-Responda naturalmente (lembrando-se de tudo que foi conversado):"""
+        # Check if it's a direct question
+        is_question = last_message.strip().endswith('?')
         
-        # Use the language generation utility
-        return generate_text(prompt, full_context)
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"🔍 Message analysis: is_question={is_question}, last_message='{last_message}'")
+        logger.info(f"📝 Recent memories: {recent_memories}")
+        logger.info(f"🧠 User facts: {user_facts[:3]}")
+        
+        if is_question:
+            # Direct question - ultra simple approach
+            user_name = "João"  # Default
+            for fact in user_facts:
+                if "nome:" in fact.lower():
+                    user_name = fact.split(":", 1)[1].strip()
+                    break
+            
+            # Super simple prompt for questions
+            if "nome" in last_message.lower():
+                return f"Seu nome é {user_name}! 😊"
+            elif "idade" in last_message.lower():
+                for fact in user_facts:
+                    if "idade:" in fact.lower():
+                        age = fact.split(":", 1)[1].strip()
+                        return f"Você tem {age}! 🎂"
+                return "Não me lembro da sua idade ainda..."
+            elif "trabalho" in last_message.lower() or "profissão" in last_message.lower():
+                for fact in user_facts:
+                    if "profissão:" in fact.lower():
+                        job = fact.split(":", 1)[1].strip()
+                        return f"Você trabalha como {job}! 💼"
+                return "Não me lembro do seu trabalho ainda..."
+            else:
+                # Generic question response
+                return f"Boa pergunta, {user_name}! Deixe-me pensar... 🤔"
+        else:
+            # Regular conversation - check if we should greet or continue
+            recent_messages = recent_memories[:3]  # Last 3 messages
+            already_greeted = any("olá" in msg.lower() or "oi" in msg.lower() for msg in recent_messages[1:])  # Check if pet greeted recently
+            
+            personality_desc = self.state.get_personality_description()
+            
+            # Check curiosity level to decide if should ask questions
+            curiosity_level = self.state.drives.get("curiosity", 0.5)
+            should_ask_question = curiosity_level > 0.6 and len(user_facts) > 2
+            
+            logger.info(f"💬 Conversation flow: already_greeted={already_greeted}, curiosity={curiosity_level:.2f}, should_ask={should_ask_question}")
+            logger.info(f"🔍 Recent messages for greeting check: {recent_messages}")
+            
+            # Simple context
+            context = f"Personalidade: {personality_desc}\nFatos sobre o usuário: {'; '.join(user_facts[:5])}"
+            
+            # Build smart prompt based on context
+            if already_greeted or len(recent_memories) > 3:
+                # Continue conversation naturally without greeting
+                if should_ask_question:
+                    prompt = f"""Você é um pet virtual curioso conversando com o usuário.
+
+Última mensagem: "{last_message}"
+
+INSTRUÇÕES:
+- Continue a conversa de forma natural (sem cumprimentar novamente)
+- Comente sobre o que o usuário disse
+- Faça UMA pergunta relacionada sobre algo interessante
+- Seja conciso (1-2 frases)
+
+Responda:"""
+                else:
+                    prompt = f"""Você é um pet virtual amigável conversando com o usuário.
+
+Última mensagem: "{last_message}"
+
+INSTRUÇÕES:
+- Continue a conversa de forma natural (sem cumprimentar novamente)
+- Comente sobre o que o usuário disse de forma empática
+- Seja conciso (1-2 frases)
+
+Responda:"""
+            else:
+                # First/early interaction - greet warmly
+                prompt = f"""Você é um pet virtual amigável encontrando o usuário.
+
+Mensagem: "{last_message}"
+
+INSTRUÇÕES:
+- Cumprimente de forma calorosa
+- Comente sobre o que o usuário disse
+- Termine com uma pergunta amigável
+- Seja conciso (1-2 frases)
+
+Responda:"""
+            
+            return generate_text(prompt, context)
 
     def simulate_conversation(self, turns: int = 5) -> None:
         """Run a simple simulation of user and pet interactions."""

@@ -25,6 +25,7 @@ without persistence.
 import os
 import logging
 from typing import Dict, Optional
+from datetime import datetime
 
 # Logger for persistence layer
 logging.basicConfig(level=logging.INFO)
@@ -90,6 +91,23 @@ def pet_state_to_dict(state: PetState) -> Dict:
     # Save personality state before serialization
     personality_data = state.save_personality_state()
     
+    # Serialize semantic memory properly - format: Dict[str, Tuple[float, datetime, int]]
+    semantic_serialized = {}
+    for key, value in state.memory.semantic.items():
+        if isinstance(value, tuple) and len(value) >= 3:
+            # Proper format: (weight, timestamp, access_count)
+            semantic_serialized[key] = [
+                float(value[0]),  # weight
+                value[1].isoformat() if hasattr(value[1], 'isoformat') else datetime.utcnow().isoformat(),  # timestamp
+                int(value[2])  # access_count
+            ]
+        elif isinstance(value, (int, float)):
+            # Legacy format: just a number, convert to proper tuple
+            from datetime import datetime
+            semantic_serialized[key] = [float(value), datetime.utcnow().isoformat(), 1]
+        else:
+            logger.warning(f"⚠️ Unknown semantic format for '{key}': {value}")
+    
     return {
         "drives": state.drives,
         "traits": state.traits,
@@ -106,18 +124,41 @@ def pet_state_to_dict(state: PetState) -> Dict:
             }
             for item in state.memory.episodic
         ],
-        "semantic": state.memory.semantic,
+        "semantic": semantic_serialized,
     }
 
 
 def dict_to_pet_state(data: Dict) -> PetState:
     """Deserialize a dictionary back into a PetState instance."""
+    from datetime import datetime
+    
     memory = MemoryStore()
+    
     # Populate episodic memories
     for ep in data.get("episodic", []):
         memory.add_episode(ep.get("text", ""), salience=float(ep.get("salience", 0.5)))
-    # Set semantic memories
-    memory.semantic = {str(k): float(v) for k, v in data.get("semantic", {}).items()}
+    
+    # Set semantic memories - format: Dict[str, Tuple[float, datetime, int]]
+    semantic_data = data.get("semantic", {})
+    if semantic_data:
+        for key, value in semantic_data.items():
+            if isinstance(value, (list, tuple)) and len(value) >= 3:
+                # Correct format: [weight, timestamp_str, access_count]
+                try:
+                    weight = float(value[0])
+                    timestamp = datetime.fromisoformat(value[1]) if isinstance(value[1], str) else datetime.utcnow()
+                    access_count = int(value[2])
+                    memory.semantic[str(key)] = (weight, timestamp, access_count)
+                except Exception as e:
+                    logger.warning(f"⚠️ Failed to parse semantic memory '{key}': {e}")
+                    # Fallback: create default tuple
+                    memory.semantic[str(key)] = (0.8, datetime.utcnow(), 1)
+            elif isinstance(value, (int, float)):
+                # Legacy format: just a float weight
+                memory.semantic[str(key)] = (float(value), datetime.utcnow(), 1)
+            else:
+                logger.warning(f"⚠️ Unknown semantic memory format for '{key}': {value}")
+    
     # Create PetState
     state = PetState()
     state.drives = {k: float(v) for k, v in data.get("drives", {}).items()}
@@ -126,8 +167,6 @@ def dict_to_pet_state(data: Dict) -> PetState:
     state.stage = data.get("stage", "infante")
     if "last_user_message" in data:
         try:
-            from datetime import datetime
-
             state.last_user_message = datetime.fromisoformat(data["last_user_message"])
         except Exception:
             pass
