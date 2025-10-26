@@ -183,6 +183,7 @@ def _generate_smart_fallback(prompt: str, context: Optional[str] = None) -> str:
     
     # Try to extract facts from context
     user_facts = {}
+    hobbies = []
     if context:
         # Extract name
         name_match = re.search(r'nome:\s*(\w+)', context, re.IGNORECASE)
@@ -198,6 +199,11 @@ def _generate_smart_fallback(prompt: str, context: Optional[str] = None) -> str:
         prof_match = re.search(r'profissão:\s*([^;,\n]+)', context, re.IGNORECASE)
         if prof_match:
             user_facts['profession'] = prof_match.group(1).strip()
+        
+        # Extract hobbies
+        hobby_matches = re.findall(r'gosta de:\s*([^;,\n]+)', context, re.IGNORECASE)
+        if hobby_matches:
+            hobbies = [h.strip() for h in hobby_matches]
     
     # Determine response type based on prompt situation
     lower_msg = user_message.lower()
@@ -234,6 +240,16 @@ def _generate_smart_fallback(prompt: str, context: Optional[str] = None) -> str:
                 return f"Você trabalha como {user_facts['profession']}! 💼"
             else:
                 return "Não sei o que você faz ainda. Me conta?"
+        
+        # Question about hobbies
+        if 'hobby' in lower_msg or 'hobbies' in lower_msg or 'gosta' in lower_msg or 'gosto' in lower_msg:
+            if hobbies:
+                if len(hobbies) == 1:
+                    return f"Você gosta de {hobbies[0]}! 🎮"
+                else:
+                    return f"Você gosta de {', '.join(hobbies[:-1])} e {hobbies[-1]}!"
+            else:
+                return "Não sei ainda do que você gosta. Me conta!"
         
         # Generic question
         return random.choice([

@@ -246,10 +246,11 @@ class PetState:
         
         # Extract hobbies/interests
         hobby_patterns = [
-            r"gosto de ([^,.!?]+)",
+            r"gosto (?:muito )?de ([^,.!?]+)",
             r"adoro ([^,.!?]+)",
             r"hobby[s]? (?:são|é) ([^,.!?]+)",
-            r"nas horas livres ([^,.!?]+)"
+            r"nas horas livres ([^,.!?]+)",
+            r"amo ([^,.!?]+)",
         ]
         for pattern in hobby_patterns:
             match = re.search(pattern, lower)
