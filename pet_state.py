@@ -25,12 +25,31 @@ logger = logging.getLogger(__name__)
 class PetState:
     drives: Dict[str, float] = field(
         default_factory=lambda: {
-            "curiosity": random.uniform(0.3, 0.7),
-            "affection": random.uniform(0.3, 0.7),
-            "order": random.uniform(0.3, 0.7),
-            "sociability": random.uniform(0.3, 0.7),
-            "autonomy": random.uniform(0.3, 0.7),
-            "humor": random.uniform(0.3, 0.7),
+            # Original 6 drives (positive)
+            "curiosity": random.uniform(0.3, 0.7),      # Desire to learn and explore
+            "affection": random.uniform(0.3, 0.7),      # Need for love and connection
+            "order": random.uniform(0.3, 0.7),          # Need for organization and structure
+            "sociability": random.uniform(0.3, 0.7),    # Desire for social interaction
+            "autonomy": random.uniform(0.3, 0.7),       # Need for independence
+            "humor": random.uniform(0.3, 0.7),          # Playfulness and fun
+            
+            # New positive drives (based on Reiss's 16 Basic Desires & Panksepp's systems)
+            "achievement": random.uniform(0.3, 0.7),    # Drive to accomplish and succeed
+            "power": random.uniform(0.3, 0.7),          # Desire for influence and control
+            "acceptance": random.uniform(0.3, 0.7),     # Need for approval and belonging
+            "idealism": random.uniform(0.3, 0.7),       # Desire for justice and fairness
+            "tranquility": random.uniform(0.3, 0.7),    # Need for peace and safety
+            "creativity": random.uniform(0.3, 0.7),     # Artistic and imaginative expression
+            
+            # Balanced/neutral drives
+            "hunger": random.uniform(0.3, 0.7),         # Physical needs (metaphorical)
+            "rest": random.uniform(0.3, 0.7),           # Need for downtime and recovery
+            
+            # Negative drives (with safeguards - lower initial values)
+            "anxiety": random.uniform(0.1, 0.3),        # Worry and apprehension (low = good)
+            "frustration": random.uniform(0.1, 0.3),    # Obstacles and setbacks (low = good)
+            "loneliness": random.uniform(0.1, 0.3),     # Feeling isolated (low = good)
+            "boredom": random.uniform(0.1, 0.3),        # Lack of stimulation (low = good)
         }
     )
     traits: Dict[str, float] = field(
@@ -56,30 +75,58 @@ class PetState:
     personality_data: Dict[str, float] = field(default_factory=dict)
 
     def tick(self, minutes: float = 30.0) -> None:
-        """Advance time and decay drives toward equilibrium."""
+        """Advance time and decay drives toward equilibrium.
+        
+        Positive drives decay toward 0.5 (equilibrium).
+        Negative drives (anxiety, frustration, loneliness, boredom) increase over time
+        without interaction, representing natural accumulation of negative states.
+        """
         decay = minutes / (24 * 60)  # fraction of a day
+        
+        # Negative drives that increase without interaction
+        negative_drives = {"anxiety", "frustration", "loneliness", "boredom"}
         
         # Apply personality-modulated decay if personality engine is available
         if self.personality:
             for k, v in self.drives.items():
                 decay_rate = self.personality.calculate_drive_decay_rate(k)
                 adjusted_decay = decay * decay_rate
-                self.drives[k] = max(0.0, min(1.0, v + (0.5 - v) * adjusted_decay))
+                
+                if k in negative_drives:
+                    # Negative drives increase over time (move toward 0.6, not 1.0 to avoid extremes)
+                    target = 0.6
+                    self.drives[k] = max(0.0, min(1.0, v + (target - v) * adjusted_decay * 0.5))
+                else:
+                    # Positive drives decay toward equilibrium (0.5)
+                    self.drives[k] = max(0.0, min(1.0, v + (0.5 - v) * adjusted_decay))
         else:
             for k, v in self.drives.items():
-                self.drives[k] = max(0.0, min(1.0, v + (0.5 - v) * decay))
+                if k in negative_drives:
+                    # Negative drives increase over time
+                    target = 0.6
+                    self.drives[k] = max(0.0, min(1.0, v + (target - v) * decay * 0.5))
+                else:
+                    # Positive drives decay toward equilibrium
+                    self.drives[k] = max(0.0, min(1.0, v + (0.5 - v) * decay))
 
     def update_from_interaction(self, text: str, response_delay: float) -> None:
         """Update drives, traits, and habits based on user input and response time."""
         logger.info("📝 Processing interaction: '%s' (delay: %.1f min)", text[:50], response_delay)
         logger.info("📊 Drives before update: %s", {k: round(v, 2) for k, v in self.drives.items()})
         
-        # Responsiveness influences sociability and affection
+        # Interaction reduces negative drives (loneliness, boredom significantly)
+        self.drives["loneliness"] = max(0.0, self.drives["loneliness"] - 0.15)
+        self.drives["boredom"] = max(0.0, self.drives["boredom"] - 0.1)
+        
+        # Responsiveness influences sociability, affection, and anxiety
         if response_delay < self.habits["average_response_time"] * 0.5:
             self.drives["affection"] = min(1.0, self.drives["affection"] + 0.05)
             self.drives["sociability"] = min(1.0, self.drives["sociability"] + 0.05)
+            self.drives["acceptance"] = min(1.0, self.drives["acceptance"] + 0.03)
+            self.drives["anxiety"] = max(0.0, self.drives["anxiety"] - 0.05)
         else:
             self.drives["sociability"] = max(0.0, self.drives["sociability"] - 0.02)
+            self.drives["anxiety"] = min(1.0, self.drives["anxiety"] + 0.02)
 
         # Enhanced content analysis for better learning
         lower = text.lower()
@@ -87,13 +134,45 @@ class PetState:
         # Extract key information about the user
         self._extract_user_info(text)
         
-        # Content influences traits
+        # Content influences drives and traits
         if any(word in lower for word in ["music", "música", "cantar", "tocar"]):
             self.traits["musical"] = min(1.0, self.traits["musical"] + 0.1)
+            self.drives["creativity"] = min(1.0, self.drives["creativity"] + 0.05)
+            
         if any(word in lower for word in ["jogo", "brincar", "game", "diversão"]):
             self.traits["ludico"] = min(1.0, self.traits["ludico"] + 0.1)
-        if any(word in lower for word in ["pergunta", "curiosidade", "saber", "aprender"]):
+            self.drives["humor"] = min(1.0, self.drives["humor"] + 0.05)
+            
+        if any(word in lower for word in ["pergunta", "curiosidade", "saber", "aprender", "?"]):
             self.drives["curiosity"] = min(1.0, self.drives["curiosity"] + 0.05)
+            self.traits["curioso"] = min(1.0, self.traits["curioso"] + 0.05)
+            
+        # New drive interactions
+        if any(word in lower for word in ["obrigado", "obrigada", "agradeço", "valeu"]):
+            self.drives["affection"] = min(1.0, self.drives["affection"] + 0.08)
+            self.drives["acceptance"] = min(1.0, self.drives["acceptance"] + 0.05)
+            
+        if any(word in lower for word in ["conquista", "consegui", "venci", "sucesso"]):
+            self.drives["achievement"] = min(1.0, self.drives["achievement"] + 0.1)
+            self.drives["frustration"] = max(0.0, self.drives["frustration"] - 0.1)
+            
+        if any(word in lower for word in ["difícil", "problema", "não consigo", "frustrado"]):
+            self.drives["frustration"] = min(1.0, self.drives["frustration"] + 0.08)
+            self.drives["tranquility"] = max(0.0, self.drives["tranquility"] - 0.05)
+            
+        if any(word in lower for word in ["calma", "paz", "tranquilo", "relaxar"]):
+            self.drives["tranquility"] = min(1.0, self.drives["tranquility"] + 0.1)
+            self.drives["anxiety"] = max(0.0, self.drives["anxiety"] - 0.08)
+            
+        if any(word in lower for word in ["criar", "arte", "desenho", "ideia"]):
+            self.drives["creativity"] = min(1.0, self.drives["creativity"] + 0.08)
+            
+        if any(word in lower for word in ["sozinho", "só", "isolado"]):
+            self.drives["loneliness"] = min(1.0, self.drives["loneliness"] + 0.1)
+            
+        if any(word in lower for word in ["junto", "amigos", "companhia"]):
+            self.drives["loneliness"] = max(0.0, self.drives["loneliness"] - 0.12)
+            self.drives["sociability"] = min(1.0, self.drives["sociability"] + 0.08)
 
         # Update habit: average response time via exponential moving average
         alpha = 0.3
@@ -104,6 +183,11 @@ class PetState:
         # Record the interaction in memory
         self.memory.add_episode(text, salience=0.5)
         self.last_user_message = datetime.utcnow()
+        
+        # Apply memory decay periodically
+        hours_since_last_decay = (datetime.utcnow() - self.memory.last_decay_time).total_seconds() / 3600.0
+        if hours_since_last_decay >= 24.0:
+            self.memory.apply_memory_decay(hours_since_last_decay)
         
         # Update personality based on interaction if personality engine is available
         if self.personality:
@@ -118,6 +202,7 @@ class PetState:
         """Extract and store semantic information about the user."""
         import re
         lower = text.lower()
+        current_time = datetime.utcnow()
         
         # Extract name
         name_patterns = [
@@ -129,14 +214,19 @@ class PetState:
             match = re.search(pattern, lower)
             if match:
                 name = match.group(1).capitalize()
-                self.memory.semantic[f"nome: {name}"] = 1.0
+                fact_key = f"nome: {name}"
+                # Reinforce if already known, otherwise add new
+                if not self.memory.reinforce_memory(fact_key, boost=0.3):
+                    self.memory.semantic[fact_key] = (1.0, current_time, 1)
                 logger.info("🧠 Learned user name: %s", name)
         
         # Extract age
         age_match = re.search(r"tenho (\d+) anos?", lower)
         if age_match:
             age = age_match.group(1)
-            self.memory.semantic[f"idade: {age} anos"] = 1.0
+            fact_key = f"idade: {age} anos"
+            if not self.memory.reinforce_memory(fact_key, boost=0.3):
+                self.memory.semantic[fact_key] = (1.0, current_time, 1)
             logger.info("🧠 Learned user age: %s", age)
         
         # Extract profession/work
@@ -149,7 +239,9 @@ class PetState:
             match = re.search(pattern, lower)
             if match:
                 work = match.group(1).strip()
-                self.memory.semantic[f"profissão: {work}"] = 1.0
+                fact_key = f"profissão: {work}"
+                if not self.memory.reinforce_memory(fact_key, boost=0.3):
+                    self.memory.semantic[fact_key] = (1.0, current_time, 1)
                 logger.info("🧠 Learned user profession: %s", work)
         
         # Extract hobbies/interests
@@ -163,7 +255,9 @@ class PetState:
             match = re.search(pattern, lower)
             if match:
                 hobby = match.group(1).strip()
-                self.memory.semantic[f"gosta de: {hobby}"] = 0.8
+                fact_key = f"gosta de: {hobby}"
+                if not self.memory.reinforce_memory(fact_key, boost=0.2):
+                    self.memory.semantic[fact_key] = (0.8, current_time, 1)
                 logger.info("🧠 Learned user interest: %s", hobby)
         
         # Extract location
@@ -176,7 +270,9 @@ class PetState:
             match = re.search(pattern, lower)
             if match:
                 location = match.group(1).strip()
-                self.memory.semantic[f"mora em: {location}"] = 1.0
+                fact_key = f"mora em: {location}"
+                if not self.memory.reinforce_memory(fact_key, boost=0.3):
+                    self.memory.semantic[fact_key] = (1.0, current_time, 1)
                 logger.info("🧠 Learned user location: %s", location)
 
     def generate_intentions(self) -> List[Tuple[str, float]]:
