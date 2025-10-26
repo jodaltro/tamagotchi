@@ -17,6 +17,7 @@ from typing import Dict, List, Tuple, Optional
 
 from .memory_store import MemoryStore
 from .personality_engine import PersonalityEngine, PersonalityProfile
+from .ai_memory_analyzer import analyze_conversation_importance
 
 # Configure logging for pet state debugging
 logger = logging.getLogger(__name__)
@@ -199,82 +200,28 @@ class PetState:
         logger.info("📊 Drives after update: %s", {k: round(v, 2) for k, v in self.drives.items()})
 
     def _extract_user_info(self, text: str) -> None:
-        """Extract and store semantic information about the user."""
-        import re
-        lower = text.lower()
+        """Extract and store semantic information about the user using AI-powered analysis."""
         current_time = datetime.utcnow()
         
-        # Extract name
-        name_patterns = [
-            r"(?:sou|me chamo|meu nome é|eu sou) (\w+)",
-            r"oi.*sou (\w+)",
-            r"olá.*sou (\w+)"
-        ]
-        for pattern in name_patterns:
-            match = re.search(pattern, lower)
-            if match:
-                name = match.group(1).capitalize()
-                fact_key = f"nome: {name}"
-                # Reinforce if already known, otherwise add new
-                if not self.memory.reinforce_memory(fact_key, boost=0.3):
-                    self.memory.semantic[fact_key] = (1.0, current_time, 1)
-                logger.info("🧠 Learned user name: %s", name)
+        # Get existing facts for context
+        existing_facts = self.memory.get_semantic_facts(min_weight=0.3)
         
-        # Extract age
-        age_match = re.search(r"tenho (\d+) anos?", lower)
-        if age_match:
-            age = age_match.group(1)
-            fact_key = f"idade: {age} anos"
+        # Use AI to analyze conversation and extract facts
+        # The AI returns an overall importance score for the message and a list of extracted facts
+        importance_score, extracted_facts = analyze_conversation_importance(text, existing_facts)
+        
+        logger.info(f"🤖 AI extracted {len(extracted_facts)} facts with importance {importance_score:.2f}")
+        
+        # Add extracted facts to semantic memory
+        for fact in extracted_facts:
+            fact_key = fact.lower().strip()
+            # Check if this reinforces existing memory
             if not self.memory.reinforce_memory(fact_key, boost=0.3):
-                self.memory.semantic[fact_key] = (1.0, current_time, 1)
-            logger.info("🧠 Learned user age: %s", age)
-        
-        # Extract profession/work
-        work_patterns = [
-            r"trabalho (?:como|de) ([^,.!?]+)",
-            r"sou ([^,.!?]+(?:desenvolvedor|programador|engenheiro|professor|médico|designer))",
-            r"profissão.* ([^,.!?]+)"
-        ]
-        for pattern in work_patterns:
-            match = re.search(pattern, lower)
-            if match:
-                work = match.group(1).strip()
-                fact_key = f"profissão: {work}"
-                if not self.memory.reinforce_memory(fact_key, boost=0.3):
-                    self.memory.semantic[fact_key] = (1.0, current_time, 1)
-                logger.info("🧠 Learned user profession: %s", work)
-        
-        # Extract hobbies/interests
-        hobby_patterns = [
-            r"gosto (?:muito )?de ([^,.!?]+)",
-            r"adoro ([^,.!?]+)",
-            r"hobby[s]? (?:são|é) ([^,.!?]+)",
-            r"nas horas livres ([^,.!?]+)",
-            r"amo ([^,.!?]+)",
-        ]
-        for pattern in hobby_patterns:
-            match = re.search(pattern, lower)
-            if match:
-                hobby = match.group(1).strip()
-                fact_key = f"gosta de: {hobby}"
-                if not self.memory.reinforce_memory(fact_key, boost=0.2):
-                    self.memory.semantic[fact_key] = (0.8, current_time, 1)
-                logger.info("🧠 Learned user interest: %s", hobby)
-        
-        # Extract location
-        location_patterns = [
-            r"moro em ([^,.!?]+)",
-            r"(?:sou|vivo) (?:de|em) ([^,.!?]+)",
-            r"cidade.* ([^,.!?]+)"
-        ]
-        for pattern in location_patterns:
-            match = re.search(pattern, lower)
-            if match:
-                location = match.group(1).strip()
-                fact_key = f"mora em: {location}"
-                if not self.memory.reinforce_memory(fact_key, boost=0.3):
-                    self.memory.semantic[fact_key] = (1.0, current_time, 1)
-                logger.info("🧠 Learned user location: %s", location)
+                # New fact - use AI-determined importance score for the message
+                # Note: All facts from the same message share the same importance score.
+                # This is intentional as the AI evaluates the overall message importance.
+                self.memory.semantic[fact_key] = (importance_score, current_time, 1)
+                logger.info(f"🧠 Learned new fact: {fact}")
 
     def generate_intentions(self) -> List[Tuple[str, float]]:
         """Generate candidate actions with utilities based on drives and traits."""
