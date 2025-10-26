@@ -159,19 +159,158 @@ def generate_text(prompt: str, context: Optional[str] = None) -> str:
             return response
         except Exception as e:
             logger.error(f"❌ Gemini API call failed: {e}")
-            logger.info("🔄 Falling back to default response")
+            logger.info("🔄 Falling back to smart response")
     else:
-        logger.info("🔄 Using fallback response (no Gemini API available)")
+        logger.info("🔄 Using smart fallback response (no Gemini API available)")
     
-    # Fallback: simple heuristic-based response
-    # If the prompt ends with a question mark, answer affirmatively
-    stripped = prompt.strip()
-    if stripped.endswith("?"):
-        fallback_response = "Claro! Isso soa divertido."
-        logger.info(f"💬 Fallback response (question): '{fallback_response}'")
-        return fallback_response
+    # Intelligent fallback - parse the prompt to understand what's needed
+    return _generate_smart_fallback(prompt, context)
+
+
+def _generate_smart_fallback(prompt: str, context: Optional[str] = None) -> str:
+    """Generate an intelligent fallback response when AI is not available."""
+    import re
+    import random
     
-    # Generic echo with a friendly twist
-    fallback_response = f"Você mencionou: '{prompt}'. Conte-me mais sobre isso!"
-    logger.info(f"💬 Fallback response (echo): '{fallback_response[:50]}{'...' if len(fallback_response) > 50 else ''}'")
-    return fallback_response
+    # Extract user message from prompt
+    user_msg_match = re.search(r'[Mm]ensagem.*?[":]\s*"([^"]+)"', prompt)
+    if not user_msg_match:
+        user_msg_match = re.search(r'[Pp]ergunta.*?[":]\s*"([^"]+)"', prompt)
+    if not user_msg_match:
+        user_msg_match = re.search(r'[Úú]ltima mensagem.*?[":]\s*"([^"]+)"', prompt)
+    
+    user_message = user_msg_match.group(1) if user_msg_match else ""
+    
+    # Try to extract facts from context
+    user_facts = {}
+    hobbies = []
+    if context:
+        # Extract name
+        name_match = re.search(r'nome:\s*(\w+)', context, re.IGNORECASE)
+        if name_match:
+            user_facts['name'] = name_match.group(1)
+        
+        # Extract age
+        age_match = re.search(r'idade:\s*(\d+)', context, re.IGNORECASE)
+        if age_match:
+            user_facts['age'] = age_match.group(1)
+        
+        # Extract profession
+        prof_match = re.search(r'profissão:\s*([^;,\n]+)', context, re.IGNORECASE)
+        if prof_match:
+            user_facts['profession'] = prof_match.group(1).strip()
+        
+        # Extract hobbies
+        hobby_matches = re.findall(r'gosta de:\s*([^;,\n]+)', context, re.IGNORECASE)
+        if hobby_matches:
+            hobbies = [h.strip() for h in hobby_matches]
+    
+    # Determine response type based on prompt situation
+    lower_msg = user_message.lower()
+    
+    # First interaction - greeting
+    if "Primeira interação" in prompt or "primeira vez" in prompt.lower():
+        greetings = [
+            "Olá! Que bom te conhecer! 😊",
+            "Oi! Como você está?",
+            "Ei! Prazer em te conhecer! ✨",
+            "Olá! Fico feliz que você veio falar comigo!",
+        ]
+        return random.choice(greetings)
+    
+    # Question detection
+    if user_message.endswith('?'):
+        # Question about name
+        if 'nome' in lower_msg:
+            if 'name' in user_facts:
+                return f"Seu nome é {user_facts['name']}! 😊"
+            else:
+                return "Hmm, não me lembro do seu nome ainda. Pode me dizer?"
+        
+        # Question about age
+        if 'idade' in lower_msg:
+            if 'age' in user_facts:
+                return f"Você tem {user_facts['age']} anos! 🎂"
+            else:
+                return "Não me lembro da sua idade. Quantos anos você tem?"
+        
+        # Question about work/profession
+        if 'trabalho' in lower_msg or 'profissão' in lower_msg:
+            if 'profession' in user_facts:
+                return f"Você trabalha como {user_facts['profession']}! 💼"
+            else:
+                return "Não sei o que você faz ainda. Me conta?"
+        
+        # Question about hobbies
+        if 'hobby' in lower_msg or 'hobbies' in lower_msg or 'gosta' in lower_msg or 'gosto' in lower_msg:
+            if hobbies:
+                if len(hobbies) == 1:
+                    return f"Você gosta de {hobbies[0]}! 🎮"
+                else:
+                    return f"Você gosta de {', '.join(hobbies[:-1])} e {hobbies[-1]}!"
+            else:
+                return "Não sei ainda do que você gosta. Me conta!"
+        
+        # Generic question
+        return random.choice([
+            "Boa pergunta! Deixe-me pensar... 🤔",
+            "Interessante! Não tenho certeza, mas posso aprender!",
+            "Hmm... o que você acha?",
+        ])
+    
+    # User introducing themselves
+    if any(word in lower_msg for word in ['sou', 'me chamo', 'meu nome']):
+        responses = [
+            "Prazer em te conhecer! 😊",
+            "Legal te conhecer melhor!",
+            "Que bom saber mais sobre você! ✨",
+        ]
+        return random.choice(responses)
+    
+    # Greeting from user
+    if any(word in lower_msg for word in ['oi', 'olá', 'ola', 'hey', 'e aí']):
+        responses = [
+            "Oi! Como vai? 😊",
+            "Olá! Tudo bem?",
+            "Hey! Que bom te ver!",
+            "E aí! Como você está?",
+        ]
+        return random.choice(responses)
+    
+    # Gratitude
+    if any(word in lower_msg for word in ['obrigado', 'obrigada', 'valeu', 'thanks']):
+        responses = [
+            "De nada! Estou aqui pra isso! 😊",
+            "Por nada! Fico feliz em ajudar!",
+            "Sempre às ordens! ✨",
+        ]
+        return random.choice(responses)
+    
+    # Talking about music
+    if any(word in lower_msg for word in ['música', 'musica', 'cantar', 'canção']):
+        responses = [
+            "Adoro música! Que tipo você gosta?",
+            "Música é tudo! Qual seu estilo favorito?",
+            "Legal! Me conta mais sobre seus gostos musicais!",
+        ]
+        return random.choice(responses)
+    
+    # Talking about games
+    if any(word in lower_msg for word in ['jogo', 'game', 'jogar', 'brincar']):
+        responses = [
+            "Jogos são demais! Qual você gosta?",
+            "Legal! Que jogo você joga?",
+            "Adoro! Me conta mais sobre isso!",
+        ]
+        return random.choice(responses)
+    
+    # Default conversational responses
+    responses = [
+        f"Entendo! Me conta mais sobre isso.",
+        f"Interessante! Como você se sente sobre isso?",
+        f"Legal! O que mais você gostaria de compartilhar?",
+        f"Hmm, que bacana! Continue...",
+        f"Que interessante! Me fala mais!",
+    ]
+    
+    return random.choice(responses)
