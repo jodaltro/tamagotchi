@@ -39,10 +39,14 @@ from __future__ import annotations
 
 import os
 import io
+import logging
 from typing import List, Optional
 
 import numpy as np  # type: ignore
 import cv2  # type: ignore
+
+# Configure logging
+logger = logging.getLogger(__name__)
 
 # Attempt to import the Google Cloud Vision client. If unavailable or
 # credentials are not configured, Vision API calls will be skipped.
@@ -64,17 +68,27 @@ def _get_vision_client() -> Optional["vision.ImageAnnotatorClient"]:
     """
     global _vision_client
     if vision is None:
+        logger.warning("🔴 Google Cloud Vision library not available")
         return None
+        
     if _vision_client is not None:
         return _vision_client
+        
     # Only initialize if credentials exist and file is present
     cred_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
-    if cred_path and os.path.exists(cred_path):
-        try:
-            _vision_client = vision.ImageAnnotatorClient()
-        except Exception:
-            _vision_client = None
-    return _vision_client
+    logger.info("🔍 Checking Vision API credentials: %s", cred_path or "not set")
+    
+    if not cred_path or not os.path.exists(cred_path):
+        logger.warning("🔴 Vision API credentials not found or invalid")
+        return None
+        
+    try:
+        _vision_client = vision.ImageAnnotatorClient()  # type: ignore
+        logger.info("✅ Vision API client initialized successfully")
+        return _vision_client
+    except Exception as e:
+        logger.error("🔴 Failed to initialize Vision API client: %s", str(e))
+        return None
 
 
 def extract_features(image_bytes: bytes, size: int = 16) -> List[float]:
@@ -126,16 +140,30 @@ def classify_image(image_bytes: bytes, max_results: int = 5) -> List[str]:
     Returns:
         A list of label descriptions or an empty list on failure.
     """
+    logger.info("🔍 Attempting to classify image using Vision API...")
+    
     client = _get_vision_client()
     if client is None:
+        logger.warning("❌ Vision API client not available")
         return []
+    
     try:
         image = vision.Image(content=image_bytes)  # type: ignore
+        logger.info("📡 Calling Vision API for label detection...")
+        
         response = client.label_detection(image=image, max_results=max_results)
+        
         if response.error.message:
+            logger.error("❌ Vision API error: %s", response.error.message)
             return []
+            
         labels = sorted(response.label_annotations, key=lambda x: x.score, reverse=True)
-        return [label.description for label in labels[:max_results]]
-    except Exception:
+        label_descriptions = [label.description for label in labels[:max_results]]
+        
+        logger.info("✅ Vision API returned %d labels: %s", len(label_descriptions), label_descriptions)
+        return label_descriptions
+        
+    except Exception as e:
+        logger.error("❌ Vision API call failed: %s", str(e))
         # Fail silently and return no labels
         return []

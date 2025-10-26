@@ -23,6 +23,7 @@ responds with a JSON containing the pet's response.
 """
 
 import os
+import logging
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 from typing import Optional
@@ -30,6 +31,17 @@ import base64
 
 from .virtual_pet import VirtualPet
 from .firestore_store import get_pet_data, save_pet_data
+
+# Configure basic logging for the server
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Log environment variables on startup for debugging
+logger.info("🐾 Server starting up...")
+logger.info("🔍 Environment variables:")
+logger.info("   USE_FIRESTORE: %s", os.getenv("USE_FIRESTORE", "not set"))
+logger.info("   GOOGLE_APPLICATION_CREDENTIALS: %s", os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "not set"))
+logger.info("   GOOGLE_API_KEY: %s", "***HIDDEN***" if os.getenv("GOOGLE_API_KEY") else "not set")
 
 app = FastAPI(title="Organic Virtual Pet API")
 
@@ -53,22 +65,42 @@ async def handle_webhook(req: WebhookRequest) -> WebhookResponse:
     if not user_id:
         raise HTTPException(status_code=400, detail="user_id is required")
     # Load or create the pet state
+    logger.info("Incoming webhook: user=%s, has_image=%s, message_len=%d", user_id, bool(image_b64), len(message))
     pet_state = get_pet_data(user_id)
     pet = VirtualPet()
     pet.state = pet_state
-    # If an image is provided, process it; otherwise process the text message
+    # Process the message and/or image
     if image_b64:
         try:
             image_bytes = base64.b64decode(image_b64.split(',')[-1])
         except Exception:
             raise HTTPException(status_code=400, detail="invalid base64 image")
         pet.user_image(image_bytes)
+        # If there's also a text message with the image, process it too
+        if message:
+            pet.user_message(message)
     elif message:
         pet.user_message(message)
     else:
         raise HTTPException(status_code=400, detail="either message or image must be provided")
+    
+    # Advance time to allow drives to evolve
+    pet.state.tick(minutes=15.0)  # Simulate 15 minutes between interactions
+    
     # Generate a reply
     reply = pet.pet_response()
+    
+    # Consolidate memories occasionally to build semantic knowledge
+    import random
+    if random.random() < 0.3:  # 30% chance to consolidate
+        pet.state.memory.consolidate(threshold=0.4)
+        logger.info("🧠 Consolidated memories into semantic knowledge")
+    # Log memory summary and quick state info
+    try:
+        mem_summary = str(pet.state.memory)
+    except Exception:
+        mem_summary = "(unavailable)"
+    logger.info("Reply generated for user=%s; memory=%s", user_id, mem_summary)
     # Persist the updated state
     save_pet_data(user_id, pet.state)
     return WebhookResponse(response=reply)

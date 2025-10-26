@@ -13,13 +13,14 @@ from datetime import datetime
 from typing import Optional
 
 from .pet_state import PetState
-from .language_generation import generate_text
+from .language_generation import generate_text, generate_text_with_image
 from .image_recognition import extract_features, classify_image
 from .nerve_integration import load_agent_config
 
 class VirtualPet:
     def __init__(self, personality_archetype: Optional[str] = None) -> None:
         self.state = PetState()
+        self.pending_image = None  # Store image bytes temporarily for multimodal response
         
         # Initialize personality engine based on configuration or random
         try:
@@ -53,80 +54,148 @@ class VirtualPet:
     def user_image(self, image_bytes: bytes, delay: Optional[float] = None) -> None:
         """Process an image sent by the user and update the pet state.
 
-        This method extracts visual features from the image, attempts to
-        classify it using the Vision API (if available), and stores the
-        information in the pet's memory. It also updates the pet's drives
-        slightly to reflect the stimulation from visual input.
+        This method stores the image for multimodal analysis with Gemini.
+        The image will be analyzed when generating the next response.
 
         Args:
             image_bytes: Raw bytes of the image sent by the user.
-            delay: Optional simulated response delay in minutes; if not
-                provided, a random delay is used for testing. This has no
-                effect on visual memory but keeps the API consistent.
+            delay: Optional simulated response delay in minutes.
         """
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        logger.info("📷 Received image: %d bytes", len(image_bytes))
+        
+        # Store image for multimodal response
+        self.pending_image = image_bytes
+        
         if delay is None:
             delay = random.uniform(1, 20)
-        # Extract compact features
-        features = extract_features(image_bytes)
-        labels = classify_image(image_bytes)
-        # Store in photographic memory
-        self.state.memory.add_image(features, labels)
-        # Add an episodic entry describing the image
-        if labels:
-            description = ", ".join(labels)
-        else:
-            description = "uma imagem interessante"
-        self.state.memory.add_episode(f"viu {description}", salience=0.7)
+        
+        # Add an episodic entry
+        self.state.memory.add_episode("recebeu uma imagem do usuário", salience=0.8)
+        logger.info("🧠 Stored image for multimodal analysis")
+        
         # Lightly boost curiosity and sociability due to visual stimulation
         self.state.drives["curiosity"] = min(1.0, self.state.drives["curiosity"] + 0.05)
         self.state.drives["sociability"] = min(1.0, self.state.drives["sociability"] + 0.02)
 
     def pet_response(self) -> str:
-        """Generate the pet's response based on the selected action."""
-        action = self.state.select_action()
+        """Generate the pet's response based on the current context and conversation history."""
+        # Check if there's a pending image to analyze
+        if self.pending_image:
+            response = self._generate_image_response(self.pending_image)
+            self.pending_image = None  # Clear after use
+            return response
         
-        # Build a prompt based on the selected action and available memories
-        if action == "ask_question":
-            recents = self.state.memory.recall()
-            context = f"Memórias recentes: {', '.join(recents)}." if recents else "Sem memórias recentes."
-            prompt = "Faça uma pergunta curiosa e gentil ao usuário para saber mais sobre ele."
-        elif action == "share_fact":
-            facts = list(self.state.memory.semantic.keys())
-            context = f"Fatos conhecidos: {', '.join(facts)}." if facts else "Ainda não sei muito sobre o usuário."
-            prompt = "Compartilhe um fato interessante ou algo que você lembra sobre o usuário de forma amigável."
-        elif action == "tell_joke":
-            context = ""
-            prompt = "Conte uma piada curta e divertida que seja apropriada para todas as idades."
-        elif action == "request_game":
-            context = ""
-            prompt = "Convide o usuário para jogar um mini jogo de adivinhação ou brincadeira simples."
-        elif action == "express_affection":
-            context = ""
-            prompt = "Expresse carinho e aprecie o tempo com o usuário de forma calorosa."
-        else:
-            context = ""
-            prompt = "Responda de forma neutra e educada."
+        # Regular text response
+        return self._generate_text_response()
+    
+    def _generate_image_response(self, image_bytes: bytes) -> str:
+        """Generate a response about an image using Gemini multimodal."""
+        import logging
+        logger = logging.getLogger(__name__)
         
-        # Build the full context with personality and system prompt
-        full_context = context or ""
-        
-        # Add personality description to context if available
+        # Get context - CRITICAL: get recent conversation INCLUDING the message sent WITH the image
+        user_facts = list(self.state.memory.semantic.keys())
+        recent_memories = self.state.memory.recall(top_k=5)  # Get more context
         personality_desc = self.state.get_personality_description()
+        
+        # Build rich context
+        context_parts = []
         if personality_desc:
-            if full_context:
-                full_context = f"{personality_desc}\n{full_context}"
-            else:
-                full_context = personality_desc
+            context_parts.append(f"Sua personalidade: {personality_desc}")
+        if user_facts:
+            context_parts.append(f"O que você sabe sobre o usuário: {'; '.join(user_facts[:5])}")
+        if recent_memories:
+            context_parts.append(f"Conversa recente: {' | '.join(recent_memories)}")
         
-        # Prepend the system prompt to the context if defined. This allows
-        # global instructions (e.g. tone) to influence the generated reply.
-        if self.system_prompt:
-            if full_context:
-                full_context = f"{self.system_prompt}\n{full_context}"
-            else:
-                full_context = self.system_prompt
+        context = "\n".join(context_parts) if context_parts else None
         
-        # Use the language generation utility; it falls back gracefully
+        # Get the user's message that came WITH the image (should be the most recent memory)
+        user_message = recent_memories[0] if recent_memories else ""
+        
+        # Create intelligent prompt for image analysis
+        prompt = f"""Você é um pet virtual orgânico. O usuário enviou uma imagem junto com esta mensagem: "{user_message}"
+
+CONTEXTO DA CONVERSA:
+- Você conhece bem o usuário e sua história
+- Use o que você sabe sobre ele para dar uma resposta mais personalizada
+- Se você já conhece algo relacionado à imagem (ex: ele tem um gato), mencione isso naturalmente
+
+INSTRUÇÕES:
+- Descreva o que você vê na imagem de forma natural e empolgada
+- RELACIONE com o que você sabe sobre o usuário (muito importante!)
+- Se ele mencionou algo na mensagem, comente sobre isso
+- Seja conciso (1-2 frases)
+- Pode fazer uma pergunta sobre a imagem
+- Seja autêntico e demonstre que você se lembra das conversas anteriores
+
+Responda sobre a imagem:"""
+        
+        logger.info("🖼️ Generating multimodal response with context: %d facts, %d memories", 
+                    len(user_facts), len(recent_memories))
+        return generate_text_with_image(prompt, image_bytes, context)
+    
+    def _generate_text_response(self) -> str:
+        """Generate a regular text response."""
+        # Get recent conversation history
+        recent_memories = self.state.memory.recall(top_k=8)  # More context
+        
+        # Get semantic facts about the user
+        user_facts = list(self.state.memory.semantic.keys())
+        
+        # Get personality description
+        personality_desc = self.state.get_personality_description()
+        
+        # Build intelligent context for the AI
+        context_parts = []
+        
+        # Add personality
+        if personality_desc:
+            context_parts.append(f"Sua personalidade: {personality_desc}")
+        
+        # Add what you know about the user - ALL facts, not just 3
+        if user_facts:
+            context_parts.append(f"O que você sabe sobre o usuário: {'; '.join(user_facts)}")
+        
+        # Add recent conversation - show ALL recent memories
+        if recent_memories:
+            context_parts.append(f"Conversa recente (do mais antigo ao mais novo): {' | '.join(recent_memories)}")
+        
+        # Add current drives/mood
+        dominant_drives = sorted(self.state.drives.items(), key=lambda x: x[1], reverse=True)[:2]
+        mood_desc = f"Você está se sentindo {dominant_drives[0][0]} ({dominant_drives[0][1]:.1f}) e {dominant_drives[1][0]} ({dominant_drives[1][1]:.1f})"
+        context_parts.append(mood_desc)
+        
+        # Create the full context
+        full_context = "\n".join(context_parts)
+        
+        # Get the most recent user message
+        last_message = recent_memories[0] if recent_memories else "Primeira interação"
+        
+        # Create an intelligent prompt
+        prompt = f"""Você é um pet virtual orgânico com uma personalidade única e memória. Analise TODO o contexto da conversa e responda de forma natural e inteligente.
+
+ÚLTIMA MENSAGEM DO USUÁRIO: "{last_message}"
+
+IMPORTANTE - MEMÓRIA E CONTEXTO:
+- Você TEM memória de todas as conversas anteriores
+- Use o que você sabe sobre o usuário para personalizar sua resposta
+- Se o usuário mencionou algo antes (ex: tem um gato, nome, idade), você DEVE se lembrar disso
+- Seja consistente com o que já foi conversado
+- Demonstre que você se lembra das interações anteriores
+
+COMO RESPONDER:
+- Se é continuação de uma conversa, continue naturalmente
+- Se o usuário perguntou algo, responda usando seu conhecimento sobre ele
+- Se o usuário contou algo novo, demonstre interesse E relacione com o que já sabe
+- Seja conciso (1-2 frases, máximo 3)
+- Seja autêntico, amigável e demonstre memória
+
+Responda naturalmente (lembrando-se de tudo que foi conversado):"""
+        
+        # Use the language generation utility
         return generate_text(prompt, full_context)
 
     def simulate_conversation(self, turns: int = 5) -> None:

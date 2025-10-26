@@ -10,6 +10,7 @@ generating intentions, and selecting the best action.
 """
 
 import random
+import logging
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Dict, List, Tuple, Optional
@@ -17,16 +18,19 @@ from typing import Dict, List, Tuple, Optional
 from .memory_store import MemoryStore
 from .personality_engine import PersonalityEngine, PersonalityProfile
 
+# Configure logging for pet state debugging
+logger = logging.getLogger(__name__)
+
 @dataclass
 class PetState:
     drives: Dict[str, float] = field(
         default_factory=lambda: {
-            "curiosity": 0.5,
-            "affection": 0.5,
-            "order": 0.5,
-            "sociability": 0.5,
-            "autonomy": 0.5,
-            "humor": 0.5,
+            "curiosity": random.uniform(0.3, 0.7),
+            "affection": random.uniform(0.3, 0.7),
+            "order": random.uniform(0.3, 0.7),
+            "sociability": random.uniform(0.3, 0.7),
+            "autonomy": random.uniform(0.3, 0.7),
+            "humor": random.uniform(0.3, 0.7),
         }
     )
     traits: Dict[str, float] = field(
@@ -67,6 +71,9 @@ class PetState:
 
     def update_from_interaction(self, text: str, response_delay: float) -> None:
         """Update drives, traits, and habits based on user input and response time."""
+        logger.info("📝 Processing interaction: '%s' (delay: %.1f min)", text[:50], response_delay)
+        logger.info("📊 Drives before update: %s", {k: round(v, 2) for k, v in self.drives.items()})
+        
         # Responsiveness influences sociability and affection
         if response_delay < self.habits["average_response_time"] * 0.5:
             self.drives["affection"] = min(1.0, self.drives["affection"] + 0.05)
@@ -74,12 +81,19 @@ class PetState:
         else:
             self.drives["sociability"] = max(0.0, self.drives["sociability"] - 0.02)
 
-        # Content influences traits
+        # Enhanced content analysis for better learning
         lower = text.lower()
-        if any(word in lower for word in ["music", "música"]):
+        
+        # Extract key information about the user
+        self._extract_user_info(text)
+        
+        # Content influences traits
+        if any(word in lower for word in ["music", "música", "cantar", "tocar"]):
             self.traits["musical"] = min(1.0, self.traits["musical"] + 0.1)
-        if any(word in lower for word in ["jogo", "brincar", "game"]):
+        if any(word in lower for word in ["jogo", "brincar", "game", "diversão"]):
             self.traits["ludico"] = min(1.0, self.traits["ludico"] + 0.1)
+        if any(word in lower for word in ["pergunta", "curiosidade", "saber", "aprender"]):
+            self.drives["curiosity"] = min(1.0, self.drives["curiosity"] + 0.05)
 
         # Update habit: average response time via exponential moving average
         alpha = 0.3
@@ -97,49 +111,101 @@ class PetState:
             quality = 1.0 if response_delay < self.habits["average_response_time"] else 0.5
             interaction_type = "positive" if quality > 0.7 else "neutral"
             self.personality.process_interaction_feedback(interaction_type, quality)
+            
+        logger.info("📊 Drives after update: %s", {k: round(v, 2) for k, v in self.drives.items()})
+
+    def _extract_user_info(self, text: str) -> None:
+        """Extract and store semantic information about the user."""
+        import re
+        lower = text.lower()
+        
+        # Extract name
+        name_patterns = [
+            r"(?:sou|me chamo|meu nome é|eu sou) (\w+)",
+            r"oi.*sou (\w+)",
+            r"olá.*sou (\w+)"
+        ]
+        for pattern in name_patterns:
+            match = re.search(pattern, lower)
+            if match:
+                name = match.group(1).capitalize()
+                self.memory.semantic[f"nome: {name}"] = 1.0
+                logger.info("🧠 Learned user name: %s", name)
+        
+        # Extract age
+        age_match = re.search(r"tenho (\d+) anos?", lower)
+        if age_match:
+            age = age_match.group(1)
+            self.memory.semantic[f"idade: {age} anos"] = 1.0
+            logger.info("🧠 Learned user age: %s", age)
+        
+        # Extract profession/work
+        work_patterns = [
+            r"trabalho (?:como|de) ([^,.!?]+)",
+            r"sou ([^,.!?]+(?:desenvolvedor|programador|engenheiro|professor|médico|designer))",
+            r"profissão.* ([^,.!?]+)"
+        ]
+        for pattern in work_patterns:
+            match = re.search(pattern, lower)
+            if match:
+                work = match.group(1).strip()
+                self.memory.semantic[f"profissão: {work}"] = 1.0
+                logger.info("🧠 Learned user profession: %s", work)
+        
+        # Extract hobbies/interests
+        hobby_patterns = [
+            r"gosto de ([^,.!?]+)",
+            r"adoro ([^,.!?]+)",
+            r"hobby[s]? (?:são|é) ([^,.!?]+)",
+            r"nas horas livres ([^,.!?]+)"
+        ]
+        for pattern in hobby_patterns:
+            match = re.search(pattern, lower)
+            if match:
+                hobby = match.group(1).strip()
+                self.memory.semantic[f"gosta de: {hobby}"] = 0.8
+                logger.info("🧠 Learned user interest: %s", hobby)
+        
+        # Extract location
+        location_patterns = [
+            r"moro em ([^,.!?]+)",
+            r"(?:sou|vivo) (?:de|em) ([^,.!?]+)",
+            r"cidade.* ([^,.!?]+)"
+        ]
+        for pattern in location_patterns:
+            match = re.search(pattern, lower)
+            if match:
+                location = match.group(1).strip()
+                self.memory.semantic[f"mora em: {location}"] = 1.0
+                logger.info("🧠 Learned user location: %s", location)
 
     def generate_intentions(self) -> List[Tuple[str, float]]:
         """Generate candidate actions with utilities based on drives and traits."""
         actions = [
-            "ask_question",
-            "share_fact",
-            "tell_joke",
-            "request_game",
-            "express_affection",
+            "contextual_response",  # Just respond naturally to what the user said
         ]
         intentions = []
-        now = datetime.utcnow()
-        hour = now.hour
-        active_factor = 1.0 if self.habits["active_start"] <= hour <= self.habits["active_end"] else 0.5
-        noise = lambda: random.uniform(-0.05, 0.05)
-        for action in actions:
-            if action == "ask_question":
-                util = self.drives["curiosity"] * 0.5 + self.drives["sociability"] * 0.3
-            elif action == "share_fact":
-                util = self.traits["curioso"] * 0.5 + self.drives["autonomy"] * 0.2
-            elif action == "tell_joke":
-                util = self.drives["humor"] * 0.6 + self.traits["ludico"] * 0.3
-            elif action == "request_game":
-                util = self.traits["ludico"] * 0.6 + self.drives["curiosity"] * 0.2
-            elif action == "express_affection":
-                util = self.drives["affection"] * 0.7 + self.traits["afetuoso"] * 0.3
-            else:
-                util = 0.1
-            util = util * active_factor + noise()
-            intentions.append((action, util))
         
-        # Apply personality modulation if available
-        if self.personality:
-            intentions = self.personality.modulate_action_utilities(intentions)
-        else:
-            intentions.sort(key=lambda x: x[1], reverse=True)
+        # Simplified: just return one main action that relies on AI intelligence
+        util = 1.0  # Always high utility for contextual response
+        intentions.append(("contextual_response", util))
         
         return intentions
 
     def select_action(self) -> str:
         """Select the highest-utility action."""
         intentions = self.generate_intentions()
-        return intentions[0][0] if intentions else "idle"
+        
+        # Debug logging
+        logger.info("🎯 Action selection - Current drives: %s", 
+                   {k: round(v, 2) for k, v in self.drives.items()})
+        logger.info("🎯 Action utilities: %s", 
+                   [(action, round(util, 3)) for action, util in intentions[:3]])
+        
+        selected_action = intentions[0][0] if intentions else "idle"
+        logger.info("🎯 Selected action: %s", selected_action)
+        
+        return selected_action
     
     def initialize_personality(
         self, 
