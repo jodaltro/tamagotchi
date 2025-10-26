@@ -423,10 +423,28 @@ class VirtualPet:
 # Required for AI features
 export GOOGLE_API_KEY="your-gemini-api-key"
 
-# Optional
-export USE_FIRESTORE="true"  # For persistent storage
-export GOOGLE_APPLICATION_CREDENTIALS="path/to/credentials.json"
+# Optional - For persistent storage across sessions
+export USE_FIRESTORE="true"
+export GOOGLE_APPLICATION_CREDENTIALS="path/to/service-account.json"
 ```
+
+### Firestore Integration
+
+The enhanced features work seamlessly with Firestore for persistent storage:
+
+**What's Stored:**
+- All 18 drives and their current values
+- Enhanced semantic memory (with weight, timestamp, access_count)
+- Image memories with AI descriptions and entities
+- Personality profile and evolution
+
+**Setup:**
+1. Create a Firestore database in Google Cloud
+2. Download service account credentials JSON
+3. Set environment variables (see above)
+4. Memory automatically persists after each interaction
+
+**Note:** When Firestore is not configured, the system uses in-memory storage (data lost on restart).
 
 ### Customization
 

@@ -2,14 +2,30 @@
 Tests for enhanced features: expanded drives, AI memory, and image analysis.
 """
 
-import sys
-sys.path.insert(0, '/home/runner/work/tamagotchi')
-
 import pytest
 from datetime import datetime, timedelta
+import sys
+import os
+
+# Add parent directory to path for imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from tamagotchi.pet_state import PetState
 from tamagotchi.memory_store import MemoryStore, ImageMemory
 from tamagotchi.virtual_pet import VirtualPet
+
+
+# Constants for drive types
+POSITIVE_DRIVES = [
+    "curiosity", "affection", "order", "sociability", "autonomy", "humor",
+    "achievement", "power", "acceptance", "idealism", "tranquility", "creativity"
+]
+
+NEUTRAL_DRIVES = ["hunger", "rest"]
+
+NEGATIVE_DRIVES = ["anxiety", "frustration", "loneliness", "boredom"]
+
+ALL_DRIVES = POSITIVE_DRIVES + NEUTRAL_DRIVES + NEGATIVE_DRIVES
 
 
 class TestExpandedDriveSystem:
@@ -21,34 +37,21 @@ class TestExpandedDriveSystem:
         assert len(pet.drives) == 18
         
         # Check all expected drives exist
-        expected_drives = [
-            "curiosity", "affection", "order", "sociability", "autonomy", "humor",
-            "achievement", "power", "acceptance", "idealism", "tranquility", "creativity",
-            "hunger", "rest",
-            "anxiety", "frustration", "loneliness", "boredom"
-        ]
-        
-        for drive in expected_drives:
+        for drive in ALL_DRIVES:
             assert drive in pet.drives
     
     def test_positive_drives_initialized_moderate(self):
         """Test that positive drives are initialized in 0.3-0.7 range."""
         pet = PetState()
-        positive_drives = [
-            "curiosity", "affection", "order", "sociability", "autonomy", "humor",
-            "achievement", "power", "acceptance", "idealism", "tranquility", "creativity",
-            "hunger", "rest"
-        ]
         
-        for drive in positive_drives:
+        for drive in POSITIVE_DRIVES:
             assert 0.3 <= pet.drives[drive] <= 0.7
     
     def test_negative_drives_initialized_low(self):
         """Test that negative drives start low (0.1-0.3)."""
         pet = PetState()
-        negative_drives = ["anxiety", "frustration", "loneliness", "boredom"]
         
-        for drive in negative_drives:
+        for drive in NEGATIVE_DRIVES:
             assert 0.1 <= pet.drives[drive] <= 0.3
     
     def test_negative_drives_increase_over_time(self):
