@@ -73,10 +73,10 @@ Depois (pet calmo): "Olá! Fico feliz que você veio falar comigo!"
 ### Exemplo 2: Memória Contextual
 ```
 Usuário: "Gosto muito de programar e tocar violão"
-Antes: Resposta genérica sem armazenar informação
+Antes: Poderia não armazenar corretamente
 Depois: 
   - Armazena "gosta de: programar e tocar violão"
-  - Pode responder corretamente quando perguntado depois
+  - Pode responder corretamente quando perguntado
   - "Você gosta de programar e tocar violão! 🎮"
 ```
 
@@ -102,8 +102,8 @@ Pet 3: "Você tem uma personalidade única: você é muito curioso e criativo"
    - Suporte para múltiplos tipos de perguntas
 
 3. **pet_state.py**
-   - Melhoria na extração de hobbies com padrão regex aprimorado
-   - Aumento da variação de personalidade para 0.8
+   - Padrões regex aprimorados para extração de hobbies (suporta "gosto muito de")
+   - Variação de personalidade configurada para 0.8 para criar pets mais distintos
    - Melhor integração com PersonalityEngine
 
 4. **firestore_store.py**
@@ -112,8 +112,9 @@ Pet 3: "Você tem uma personalidade única: você é muito curioso e criativo"
 
 ## ✅ Testes
 
-- ✅ Todos os 22 testes de personalidade passam
-- ✅ Todos os 24 testes de funcionalidades avançadas passam
+- ✅ Todos os 22 testes de personalidade passam (test_personality_engine.py)
+- ✅ Todos os 24 testes de funcionalidades avançadas passam (test_enhanced_features.py)
+- ✅ Total: 46 testes passando
 - ✅ Sem vulnerabilidades de segurança detectadas (CodeQL)
 - ✅ API testada e funcionando corretamente
 - ✅ Persistência de estado verificada
