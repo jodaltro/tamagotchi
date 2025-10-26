@@ -400,8 +400,21 @@ class PersonalityEngine:
             base_rate *= (0.9 + 0.2 * self.profile.conscientiousness)
         
         # Activity level affects energy-related drives
-        if drive_name in ["curiosity", "sociability"]:
+        if drive_name in ["curiosity", "sociability", "achievement", "creativity"]:
             base_rate *= (0.85 + 0.3 * self.profile.activity)
+        
+        # Negative drives affected by neuroticism
+        if drive_name in ["anxiety", "frustration", "loneliness", "boredom"]:
+            # Higher neuroticism = slower decay of negative emotions
+            base_rate *= (0.7 + 0.6 * self.profile.neuroticism)
+        
+        # Agreeableness affects social drives
+        if drive_name in ["affection", "acceptance"]:
+            base_rate *= (0.85 + 0.3 * self.profile.agreeableness)
+        
+        # Openness affects creative and curious drives
+        if drive_name in ["creativity", "idealism"]:
+            base_rate *= (0.85 + 0.3 * self.profile.openness)
         
         return base_rate
     

@@ -3,19 +3,23 @@ High-level interface to the organic virtual pet.
 
 The `VirtualPet` class wraps a `PetState` instance and provides methods to
 process user messages (updating state) and generate responses based on the
-selected action. When run directly, this module runs a simple simulation for
-manual testing.
+selected action. It includes AI-driven memory importance detection and
+enhanced image memory capabilities.
 """
 
 import json
 import random
 from datetime import datetime
 from typing import Optional
+import logging
 
 from .pet_state import PetState
 from .language_generation import generate_text, generate_text_with_image
 from .image_recognition import extract_features, classify_image
 from .nerve_integration import load_agent_config
+from .ai_memory_analyzer import analyze_conversation_importance, analyze_image_memory
+
+logger = logging.getLogger(__name__)
 
 class VirtualPet:
     def __init__(self, personality_archetype: Optional[str] = None) -> None:
@@ -45,25 +49,47 @@ class VirtualPet:
         self.state.initialize_personality(archetype=personality_archetype)
 
     def user_message(self, text: str, delay: Optional[float] = None) -> None:
-        """Process a user message and update the pet state."""
+        """Process a user message and update the pet state with AI-driven importance analysis."""
         if delay is None:
             # simulate a random delay in minutes for testing
             delay = random.uniform(1, 20)
+        
+        # AI-driven importance analysis
+        existing_facts = self.state.memory.get_semantic_facts(min_weight=0.3)
+        importance_score, extracted_facts = analyze_conversation_importance(text, existing_facts)
+        
+        logger.info(f"💡 Message importance: {importance_score:.2f}, extracted {len(extracted_facts)} facts")
+        
+        # Add extracted facts to semantic memory
+        current_time = datetime.utcnow()
+        for fact in extracted_facts:
+            fact_key = fact.lower().strip()
+            # Check if this reinforces existing memory
+            if not self.state.memory.reinforce_memory(fact_key, boost=0.3):
+                # New fact
+                self.state.memory.semantic[fact_key] = (importance_score, current_time, 1)
+                logger.info(f"🆕 New fact learned: {fact}")
+        
+        # Update pet state with interaction
         self.state.update_from_interaction(text, delay)
+        
+        # Override the default importance score with AI-determined one
+        if self.state.memory.episodic:
+            # Update the most recent episodic memory with AI importance
+            latest_memory = self.state.memory.episodic[-1]
+            latest_memory.importance_score = importance_score
 
     def user_image(self, image_bytes: bytes, delay: Optional[float] = None) -> None:
-        """Process an image sent by the user and update the pet state.
+        """Process an image sent by the user with AI-driven analysis.
 
-        This method stores the image for multimodal analysis with Gemini.
-        The image will be analyzed when generating the next response.
+        This method analyzes the image using AI to extract detailed information,
+        detect entities (people, animals, objects), and determine importance.
+        The enhanced image memory will be used when generating the next response.
 
         Args:
             image_bytes: Raw bytes of the image sent by the user.
             delay: Optional simulated response delay in minutes.
         """
-        import logging
-        logger = logging.getLogger(__name__)
-        
         logger.info("📷 Received image: %d bytes", len(image_bytes))
         
         # Store image for multimodal response
@@ -72,9 +98,55 @@ class VirtualPet:
         if delay is None:
             delay = random.uniform(1, 20)
         
-        # Add an episodic entry
-        self.state.memory.add_episode("recebeu uma imagem do usuário", salience=0.8)
-        logger.info("🧠 Stored image for multimodal analysis")
+        # Extract features for similarity matching
+        features = extract_features(image_bytes)
+        
+        # Get labels (if Vision API available)
+        labels = classify_image(image_bytes)
+        
+        # AI-driven image analysis
+        recent_memories = self.state.memory.recall(top_k=5)
+        existing_facts = self.state.memory.get_semantic_facts(min_weight=0.3)
+        user_message = recent_memories[0] if recent_memories else ""
+        
+        ai_analysis = analyze_image_memory(
+            image_bytes,
+            user_message,
+            existing_facts,
+            recent_memories
+        )
+        
+        logger.info(f"🤖 AI image analysis: {ai_analysis['description'][:50]}...")
+        logger.info(f"🏷️ Detected entities: {ai_analysis['entities']}")
+        logger.info(f"💯 Image importance: {ai_analysis['importance']:.2f}")
+        
+        # Store enhanced image memory
+        self.state.memory.add_image_memory(
+            features=features,
+            labels=ai_analysis.get('labels', labels),
+            ai_description=ai_analysis.get('description', ''),
+            detected_entities=ai_analysis.get('entities', {}),
+            context=user_message,
+            importance_score=ai_analysis.get('importance', 0.5)
+        )
+        
+        # Add episodic memory with AI importance
+        episode_text = f"recebeu uma imagem: {ai_analysis.get('description', 'imagem do usuário')}"
+        self.state.memory.add_episode(
+            episode_text,
+            salience=0.8,
+            importance_score=ai_analysis.get('importance', 0.5)
+        )
+        
+        # Extract facts from entities (e.g., "tem pet: gato laranja")
+        current_time = datetime.utcnow()
+        for entity_type, entity_desc in ai_analysis.get('entities', {}).items():
+            if entity_type in ['person', 'animal']:
+                fact_key = f"imagem {entity_type}: {entity_desc}"
+                self.state.memory.semantic[fact_key] = (ai_analysis['importance'], current_time, 1)
+                logger.info(f"🖼️ Stored image fact: {fact_key}")
+        
+        logger.info("🧠 Stored enhanced image memory")
         
         # Lightly boost curiosity and sociability due to visual stimulation
         self.state.drives["curiosity"] = min(1.0, self.state.drives["curiosity"] + 0.05)
@@ -93,22 +165,29 @@ class VirtualPet:
     
     def _generate_image_response(self, image_bytes: bytes) -> str:
         """Generate a response about an image using Gemini multimodal."""
-        import logging
-        logger = logging.getLogger(__name__)
-        
         # Get context - CRITICAL: get recent conversation INCLUDING the message sent WITH the image
-        user_facts = list(self.state.memory.semantic.keys())
-        recent_memories = self.state.memory.recall(top_k=5)  # Get more context
+        user_facts = self.state.memory.get_semantic_facts(min_weight=0.3)
+        recent_memories = self.state.memory.recall(top_k=5)
         personality_desc = self.state.get_personality_description()
+        
+        # Get previous image memories for context
+        image_memories = self.state.memory.get_image_memories_with_context(top_k=3)
         
         # Build rich context
         context_parts = []
         if personality_desc:
             context_parts.append(f"Sua personalidade: {personality_desc}")
         if user_facts:
-            context_parts.append(f"O que você sabe sobre o usuário: {'; '.join(user_facts[:5])}")
+            context_parts.append(f"O que você sabe sobre o usuário: {'; '.join(user_facts[:10])}")
         if recent_memories:
             context_parts.append(f"Conversa recente: {' | '.join(recent_memories)}")
+        if image_memories:
+            img_context = []
+            for img in image_memories:
+                if img.get('description'):
+                    img_context.append(f"Imagem anterior: {img['description']}")
+            if img_context:
+                context_parts.append("Imagens anteriores: " + " | ".join(img_context[:2]))
         
         context = "\n".join(context_parts) if context_parts else None
         
@@ -122,19 +201,21 @@ CONTEXTO DA CONVERSA:
 - Você conhece bem o usuário e sua história
 - Use o que você sabe sobre ele para dar uma resposta mais personalizada
 - Se você já conhece algo relacionado à imagem (ex: ele tem um gato), mencione isso naturalmente
+- Se você já viu imagens anteriores dele, pode fazer conexões
 
 INSTRUÇÕES:
 - Descreva o que você vê na imagem de forma natural e empolgada
 - RELACIONE com o que você sabe sobre o usuário (muito importante!)
 - Se ele mencionou algo na mensagem, comente sobre isso
+- Se reconhecer algo de imagens anteriores, mencione
 - Seja conciso (1-2 frases)
 - Pode fazer uma pergunta sobre a imagem
-- Seja autêntico e demonstre que você se lembra das conversas anteriores
+- Seja autêntico e demonstre que você se lembra das conversas e imagens anteriores
 
 Responda sobre a imagem:"""
         
-        logger.info("🖼️ Generating multimodal response with context: %d facts, %d memories", 
-                    len(user_facts), len(recent_memories))
+        logger.info("🖼️ Generating multimodal response with context: %d facts, %d memories, %d images", 
+                    len(user_facts), len(recent_memories), len(image_memories))
         return generate_text_with_image(prompt, image_bytes, context)
     
     def _generate_text_response(self) -> str:
@@ -142,8 +223,8 @@ Responda sobre a imagem:"""
         # Get recent conversation history
         recent_memories = self.state.memory.recall(top_k=8)  # More context
         
-        # Get semantic facts about the user
-        user_facts = list(self.state.memory.semantic.keys())
+        # Get semantic facts about the user (using new memory structure)
+        user_facts = self.state.memory.get_semantic_facts(min_weight=0.3)
         
         # Get personality description
         personality_desc = self.state.get_personality_description()
@@ -163,9 +244,10 @@ Responda sobre a imagem:"""
         if recent_memories:
             context_parts.append(f"Conversa recente (do mais antigo ao mais novo): {' | '.join(recent_memories)}")
         
-        # Add current drives/mood
-        dominant_drives = sorted(self.state.drives.items(), key=lambda x: x[1], reverse=True)[:2]
-        mood_desc = f"Você está se sentindo {dominant_drives[0][0]} ({dominant_drives[0][1]:.1f}) e {dominant_drives[1][0]} ({dominant_drives[1][1]:.1f})"
+        # Add current drives/mood (including negative drives for context)
+        dominant_drives = sorted(self.state.drives.items(), key=lambda x: x[1], reverse=True)[:3]
+        mood_parts = [f"{drive} ({value:.1f})" for drive, value in dominant_drives]
+        mood_desc = f"Você está se sentindo principalmente: {', '.join(mood_parts)}"
         context_parts.append(mood_desc)
         
         # Create the full context
