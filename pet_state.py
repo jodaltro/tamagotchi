@@ -17,6 +17,7 @@ from typing import Dict, List, Tuple, Optional
 
 from .memory_store import MemoryStore
 from .personality_engine import PersonalityEngine, PersonalityProfile
+from .ai_memory_analyzer import analyze_conversation_importance
 
 # Configure logging for pet state debugging
 logger = logging.getLogger(__name__)
@@ -200,14 +201,13 @@ class PetState:
 
     def _extract_user_info(self, text: str) -> None:
         """Extract and store semantic information about the user using AI-powered analysis."""
-        from .ai_memory_analyzer import analyze_conversation_importance
-        
         current_time = datetime.utcnow()
         
         # Get existing facts for context
         existing_facts = self.memory.get_semantic_facts(min_weight=0.3)
         
         # Use AI to analyze conversation and extract facts
+        # The AI returns an overall importance score for the message and a list of extracted facts
         importance_score, extracted_facts = analyze_conversation_importance(text, existing_facts)
         
         logger.info(f"🤖 AI extracted {len(extracted_facts)} facts with importance {importance_score:.2f}")
@@ -217,7 +217,9 @@ class PetState:
             fact_key = fact.lower().strip()
             # Check if this reinforces existing memory
             if not self.memory.reinforce_memory(fact_key, boost=0.3):
-                # New fact - use AI-determined importance score
+                # New fact - use AI-determined importance score for the message
+                # Note: All facts from the same message share the same importance score.
+                # This is intentional as the AI evaluates the overall message importance.
                 self.memory.semantic[fact_key] = (importance_score, current_time, 1)
                 logger.info(f"🧠 Learned new fact: {fact}")
 
