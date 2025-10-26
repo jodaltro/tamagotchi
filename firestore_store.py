@@ -197,9 +197,12 @@ def get_pet_data(user_id: str) -> PetState:
     if user_id in _IN_MEMORY_STORE:
         logger.info("Loaded pet state for user '%s' from in-memory store", user_id)
         return dict_to_pet_state(_IN_MEMORY_STORE[user_id])
-    # Create a new state
+    # Create a new state with random personality
     logger.info("Creating new PetState for user '%s' (no existing state found)", user_id)
-    return PetState()
+    new_state = PetState()
+    new_state.initialize_personality()  # Initialize with random personality
+    logger.info("Initialized new pet with random personality for user '%s'", user_id)
+    return new_state
 
 
 def save_pet_data(user_id: str, state: PetState) -> None:

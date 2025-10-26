@@ -315,7 +315,7 @@ class PetState:
             archetype: Optional personality archetype name
             profile_data: Optional dictionary of personality dimension values
         """
-        from .personality_engine import create_personality
+        from .personality_engine import create_personality, PersonalityProfile
         
         if profile_data:
             # Restore personality from saved data
@@ -327,8 +327,9 @@ class PetState:
             self.personality = create_personality(archetype=archetype)
             self.personality_data = self.personality.profile.to_dict()
         else:
-            # Create random personality for uniqueness
-            self.personality = create_personality(random_variation=True)
+            # Create random personality with higher variation for uniqueness
+            profile = PersonalityProfile.random_profile(variation=0.8)
+            self.personality = PersonalityEngine(profile)
             self.personality_data = self.personality.profile.to_dict()
     
     def get_personality_description(self) -> str:
