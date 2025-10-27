@@ -383,6 +383,42 @@ def _generate_smart_fallback(prompt: str, context: Optional[str] = None) -> str:
         ]
         return random.choice(responses)
     
+    # Check pet's emotional state for appropriate responses
+    drives = getattr(self.pet_state, 'drives', {})
+    
+    # High frustration responses
+    if drives.get('frustracao', 0) > 0.7:
+        responses = [
+            "Tá, entendi...",
+            "Ok, ok...",
+            "Hmm... tudo bem.",
+            "Ah, sei...",
+            "Certo...",
+            "Beleza então...",
+        ]
+        return random.choice(responses)
+    
+    # Low humor responses
+    if drives.get('humor', 0.5) < 0.3:
+        responses = [
+            "Ah... ok.",
+            "Entendi...",
+            "Hmm...",
+            "Tá bom...",
+            "Sei...",
+        ]
+        return random.choice(responses)
+    
+    # High anxiety responses  
+    if drives.get('ansiedade', 0) > 0.6:
+        responses = [
+            "Ah... tudo bem.",
+            "Ok, entendi...",
+            "Hmm, sei...",
+            "Certo...",
+        ]
+        return random.choice(responses)
+    
     # Default conversational responses (more colloquial)
     responses = [
         "Entendi! Me conta mais!",

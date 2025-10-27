@@ -439,11 +439,11 @@ Responda sobre a imagem:"""
         
         return ", ".join(descriptions) if descriptions else "equilibrado"
     
-    def _build_dynamic_prompt(self, last_message: str, recent_memories: List[str], user_facts: List[str]) -> str:
+    def _build_dynamic_prompt(self, current_user_message: str, recent_memories: List[str], user_facts: List[str]) -> str:
         """Build a dynamic prompt based on conversation state, personality, and user's communication style."""
         # Check conversation stage
         is_first_interaction = len(recent_memories) <= 1
-        is_question = last_message.strip().endswith('?')
+        is_question = current_user_message.strip().endswith('?')
         
         # Get user's communication style for adaptation
         user_style = self.state.memory.communication_style
@@ -479,18 +479,40 @@ REGRAS DE OURO:
             relationship_stage = self.state.memory.relationship.relationship_stage
             greeting_done = self.state.memory.relationship.greeting_phase_completed
         
-        if is_first_interaction:
+        # Check for negative feedback first
+        negative_feedback_indicators = [
+            "não gostei", "nao gostei", "não gosto", "nao gosto", 
+            "ruim", "chato", "errado", "esquisito", "repetitivo",
+            "sem graça", "bobeira", "idiota", "muda", "pare",
+            "chega", "quantas perguntas", "muitas perguntas", 
+            "para de perguntar", "não vou mais responder", "nao vou mais responder"
+        ]
+        is_negative_feedback = any(indicator in current_user_message.lower() for indicator in negative_feedback_indicators)
+        
+        if is_negative_feedback:
+            situation = f"""
+
+SITUAÇÃO: Feedback negativo do usuário
+Mensagem: "{current_user_message}"
+
+ATENÇÃO: O usuário demonstrou descontentamento! 
+- RECONHEÇA o que ele disse e PEÇA DESCULPAS sinceramente
+- MUDE completamente sua abordagem anterior
+- Seja mais atento e adaptativo
+- Pergunte como pode melhorar ou o que ele prefere
+- NÃO ignore ou repita a mesma coisa!"""
+        elif is_first_interaction:
             situation = f"""
 
 SITUAÇÃO: Primeira vez conversando
-Mensagem: "{last_message}"
+Mensagem: "{current_user_message}"
 
 Responda naturalmente, se apresente com autenticidade!"""
         elif is_question:
             situation = f"""
 
 SITUAÇÃO: Pergunta do usuário
-"{last_message}"
+"{current_user_message}"
 
 Responda de forma natural. Se souber (baseado no que conhece), responda. Se não souber, seja honesto de forma descontraída."""
         else:
@@ -502,7 +524,7 @@ Responda de forma natural. Se souber (baseado no que conhece), responda. Se não
                 situation = f"""
 
 SITUAÇÃO: Papo contínuo com alguém que você já conhece
-Mensagem: "{last_message}"
+Mensagem: "{current_user_message}"
 
 IMPORTANTE: Vocês já se cumprimentaram antes! NÃO repita "Olá" ou "Oi"!
 Responda diretamente ao que a pessoa disse. Seja natural e conversacional."""
@@ -510,14 +532,14 @@ Responda diretamente ao que a pessoa disse. Seja natural e conversacional."""
                 situation = f"""
 
 SITUAÇÃO: Conhecendo melhor a pessoa
-Mensagem: "{last_message}"
+Mensagem: "{current_user_message}"
 
 Mostre que você lembra da pessoa e das conversas anteriores. Seja natural!"""
             else:
                 situation = f"""
 
 SITUAÇÃO: Primeiras interações
-Mensagem: "{last_message}"
+Mensagem: "{current_user_message}"
 
 Responda naturalmente. Se fizer sentido, faça uma pergunta para conhecer melhor."""
         
