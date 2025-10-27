@@ -1,17 +1,23 @@
 """
 Language generation utilities for the organic virtual pet.
 
-This module wraps text generation functionality so the virtual pet can
-respond in a more natural and varied way. It attempts to use the Google
-Generative AI client when available; if the client is not configured or
-installed, it falls back to a simple template-based approach.
+This module provides AI-powered text generation with intelligent fallback.
+The PRIMARY approach is to use Google's Generative AI (Gemini) API for 
+natural, adaptive, and varied responses. The fallback logic is ONLY used 
+when the AI is unavailable (no API key, no internet, API errors).
+
+The AI approach is superior because:
+- More natural and varied responses
+- Adapts to user's communication style automatically
+- Responds contextually to the pet's personality and state
+- More random and less predictable
 
 The function ``generate_text`` takes a prompt and optional context and
 returns a generated string. For production use, you should provide your
 Vertex AI or Gemini API credentials by setting the appropriate
 environment variables (e.g., ``GOOGLE_API_KEY``) and installing the
 ``google-generativeai`` package. When running locally without
-credentials, the fallback produces a polite echo or a default response.
+credentials, the fallback produces simple template-based responses.
 
 Example usage::
 
@@ -128,16 +134,21 @@ def generate_text_with_image(prompt: str, image_bytes: bytes, context: Optional[
 def generate_text(prompt: str, context: Optional[str] = None) -> str:
     """Generate a natural language response based on the given prompt.
 
-    If a generative model is configured, this function sends the prompt
-    (prefixed by any context) to the model and returns the generated
-    content. Otherwise, it produces a simple deterministic response by
-    echoing the prompt or using a fallback message.
+    PRIMARY APPROACH: Uses AI (Google Gemini) for natural, adaptive responses.
+    FALLBACK ONLY: Uses template-based responses when AI is unavailable.
+    
+    The AI approach is preferred because it:
+    - Generates more natural and varied responses
+    - Automatically adapts to user communication style
+    - Responds intelligently based on pet's personality and state
+    - Provides more random and less predictable interactions
 
     Args:
         prompt: The main prompt or instruction for the model.
         context: Optional additional context to prime the model. When
             provided, the context is prepended to the prompt separated
-            by a newline.
+            by a newline. This should include detailed pet parameters
+            (personality, drives, traits, user facts) for best results.
 
     Returns:
         A generated string suitable as a conversational reply.
