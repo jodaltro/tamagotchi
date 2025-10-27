@@ -134,10 +134,17 @@ def generate_text_with_image(prompt: str, image_bytes: bytes, context: Optional[
 def generate_text(prompt: str, context: Optional[str] = None) -> str:
     """Generate a natural language response based on the given prompt.
 
-    PRIMARY APPROACH: Uses AI (Google Gemini) for natural, adaptive responses.
+    PRIMARY APPROACH: Uses Ollama (local Llama 3.2-3B) for privacy and control.
+    SECONDARY: Uses AI (Google Gemini) for natural, adaptive responses.
     FALLBACK ONLY: Uses template-based responses when AI is unavailable.
     
-    The AI approach is preferred because it:
+    The Ollama approach is preferred because it:
+    - Runs locally without external API dependencies
+    - Provides privacy and data control
+    - Integrates with pet memory architecture (PET-CANON, ABM, C&C)
+    - Enables consistent persona through memory-guided prompts
+    
+    The AI approach is also good because it:
     - Generates more natural and varied responses
     - Automatically adapts to user communication style
     - Responds intelligently based on pet's personality and state
@@ -155,9 +162,34 @@ def generate_text(prompt: str, context: Optional[str] = None) -> str:
     """
     logger.info(f"🤖 Generating text for prompt: '{prompt[:50]}{'...' if len(prompt) > 50 else ''}'")
     
-    model = _get_generative_model()
     full_prompt = prompt if context is None else f"{context}\n{prompt}"
     
+    # Try Ollama first (local LLM)
+    try:
+        from .ollama_client import get_ollama_client
+        
+        ollama = get_ollama_client()
+        if ollama:
+            logger.info("🦙 Attempting Ollama (Llama 3.2-3B) generation...")
+            text, metadata = ollama.generate(
+                prompt=full_prompt,
+                temperature=0.7,
+                top_p=0.9,
+                max_tokens=512
+            )
+            
+            if metadata["success"] and text:
+                logger.info(f"✅ Ollama response received: '{text[:50]}{'...' if len(text) > 50 else ''}'")
+                logger.info(f"📊 Latency: {metadata['latency_ms']:.0f}ms, Tokens: {metadata['tokens_in']}→{metadata['tokens_out']}")
+                return text
+            else:
+                logger.warning(f"⚠️ Ollama failed: {metadata.get('error', 'unknown error')}")
+                logger.info("🔄 Falling back to Gemini API")
+    except Exception as e:
+        logger.warning(f"⚠️ Ollama error: {e}, falling back to Gemini")
+    
+    # Try Gemini as secondary option
+    model = _get_generative_model()
     if model is not None:
         try:
             logger.info("🚀 Calling Gemini API (gemini-2.0-flash-lite)...")
