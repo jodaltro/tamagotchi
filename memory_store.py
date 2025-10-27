@@ -17,6 +17,13 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+# Import communication style analyzer
+try:
+    from .language_style_analyzer import CommunicationStyle
+except ImportError:
+    # Fallback for when running as script
+    CommunicationStyle = None
+
 @dataclass
 class MemoryItem:
     kind: str
@@ -59,8 +66,16 @@ class MemoryStore:
     # Enhanced photographic memory with AI descriptions
     images: List[ImageMemory] = field(default_factory=list)
     
+    # User's communication style for adaptive responses
+    communication_style: Optional[object] = None  # CommunicationStyle object
+    
     # Memory decay tracking
     last_decay_time: datetime = field(default_factory=datetime.utcnow)
+    
+    def __post_init__(self):
+        """Initialize communication style if not set."""
+        if self.communication_style is None and CommunicationStyle is not None:
+            self.communication_style = CommunicationStyle()
 
     def add_episode(self, text: str, salience: float = 0.5, importance_score: float = 0.5) -> None:
         """Add a new episodic memory to the buffer with AI-determined importance."""

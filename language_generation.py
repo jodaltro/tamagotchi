@@ -168,7 +168,7 @@ def generate_text(prompt: str, context: Optional[str] = None) -> str:
 
 
 def _generate_smart_fallback(prompt: str, context: Optional[str] = None) -> str:
-    """Generate an intelligent fallback response when AI is not available."""
+    """Generate an intelligent, colloquial fallback response when AI is not available."""
     import re
     import random
     
@@ -208,13 +208,14 @@ def _generate_smart_fallback(prompt: str, context: Optional[str] = None) -> str:
     # Determine response type based on prompt situation
     lower_msg = user_message.lower()
     
-    # First interaction - greeting
-    if "Primeira interação" in prompt or "primeira vez" in prompt.lower():
+    # First interaction - greeting (more colloquial)
+    if "Primeira" in prompt and ("interação" in prompt or "vez" in prompt):
         greetings = [
-            "Olá! Que bom te conhecer! 😊",
-            "Oi! Como você está?",
-            "Ei! Prazer em te conhecer! ✨",
-            "Olá! Fico feliz que você veio falar comigo!",
+            "Oi! Que massa te conhecer! 😊",
+            "E aí! Tudo bem?",
+            "Opa! Prazer! ✨",
+            "Olá! Fico feliz que veio falar comigo!",
+            "Hey! Como vai? 😄",
         ]
         return random.choice(greetings)
     
@@ -223,94 +224,132 @@ def _generate_smart_fallback(prompt: str, context: Optional[str] = None) -> str:
         # Question about name
         if 'nome' in lower_msg:
             if 'name' in user_facts:
-                return f"Seu nome é {user_facts['name']}! 😊"
+                return random.choice([
+                    f"Seu nome é {user_facts['name']}! 😊",
+                    f"Vc é o {user_facts['name']}, né?",
+                    f"{user_facts['name']}! Lembro sim 😄"
+                ])
             else:
-                return "Hmm, não me lembro do seu nome ainda. Pode me dizer?"
+                return random.choice([
+                    "Hmm, não lembro do seu nome ainda... pode me dizer?",
+                    "Opa, esqueci! Qual é seu nome mesmo?",
+                    "Pô, não me lembro... me fala aí?"
+                ])
         
         # Question about age
         if 'idade' in lower_msg:
             if 'age' in user_facts:
-                return f"Você tem {user_facts['age']} anos! 🎂"
+                return random.choice([
+                    f"Vc tem {user_facts['age']} anos! 🎂",
+                    f"{user_facts['age']} anos, né?",
+                    f"Tem {user_facts['age']} anos! 😊"
+                ])
             else:
-                return "Não me lembro da sua idade. Quantos anos você tem?"
+                return random.choice([
+                    "Não lembro da sua idade... quantos anos vc tem?",
+                    "Opa, não sei! Me fala quantos anos vc tem?",
+                    "Esqueci! Qual sua idade?"
+                ])
         
         # Question about work/profession
         if 'trabalho' in lower_msg or 'profissão' in lower_msg:
             if 'profession' in user_facts:
-                return f"Você trabalha como {user_facts['profession']}! 💼"
+                return random.choice([
+                    f"Vc trabalha como {user_facts['profession']}, né? 💼",
+                    f"Você é {user_facts['profession']}!",
+                    f"{user_facts['profession']}! Massa! 😊"
+                ])
             else:
-                return "Não sei o que você faz ainda. Me conta?"
+                return random.choice([
+                    "Não sei o que vc faz ainda... me conta?",
+                    "Opa, não lembro! Qual seu trampo?",
+                    "Esqueci! O que vc faz?"
+                ])
         
         # Question about hobbies
         if 'hobby' in lower_msg or 'hobbies' in lower_msg or 'gosta' in lower_msg or 'gosto' in lower_msg:
             if hobbies:
                 if len(hobbies) == 1:
-                    return f"Você gosta de {hobbies[0]}! 🎮"
+                    return f"Vc gosta de {hobbies[0]}! 🎮"
                 else:
-                    return f"Você gosta de {', '.join(hobbies[:-1])} e {hobbies[-1]}!"
+                    return f"Vc gosta de {', '.join(hobbies[:-1])} e {hobbies[-1]}!"
             else:
-                return "Não sei ainda do que você gosta. Me conta!"
+                return random.choice([
+                    "Não sei ainda do que vc gosta... me conta!",
+                    "Opa, não sei! Do que vc gosta?",
+                    "Esqueci! Me fala suas paradas!"
+                ])
         
         # Generic question
         return random.choice([
-            "Boa pergunta! Deixe-me pensar... 🤔",
-            "Interessante! Não tenho certeza, mas posso aprender!",
-            "Hmm... o que você acha?",
+            "Boa pergunta! Deixa eu pensar... 🤔",
+            "Hmm... interessante! Não sei bem, mas posso aprender!",
+            "Pô, não sei... o que vc acha?",
+            "Boa! Não tenho certeza... 🤔"
         ])
     
     # User introducing themselves
     if any(word in lower_msg for word in ['sou', 'me chamo', 'meu nome']):
         responses = [
             "Prazer em te conhecer! 😊",
-            "Legal te conhecer melhor!",
-            "Que bom saber mais sobre você! ✨",
+            "Massa te conhecer melhor!",
+            "Que legal saber mais sobre vc! ✨",
+            "Show! Prazer! 😄"
         ]
         return random.choice(responses)
     
     # Greeting from user
-    if any(word in lower_msg for word in ['oi', 'olá', 'ola', 'hey', 'e aí']):
+    if any(word in lower_msg for word in ['oi', 'olá', 'ola', 'hey', 'e aí', 'eai']):
         responses = [
             "Oi! Como vai? 😊",
-            "Olá! Tudo bem?",
+            "E aí! Tudo certo?",
             "Hey! Que bom te ver!",
-            "E aí! Como você está?",
+            "Opa! Tudo bem? 😄",
+            "Olá! Como tá?",
         ]
         return random.choice(responses)
     
     # Gratitude
-    if any(word in lower_msg for word in ['obrigado', 'obrigada', 'valeu', 'thanks']):
+    if any(word in lower_msg for word in ['obrigado', 'obrigada', 'valeu', 'thanks', 'vlw']):
         responses = [
-            "De nada! Estou aqui pra isso! 😊",
-            "Por nada! Fico feliz em ajudar!",
-            "Sempre às ordens! ✨",
+            "De nada! Tô aqui pra isso! 😊",
+            "Nada! Fico feliz em ajudar!",
+            "Sempre! ✨",
+            "Tmj! 😄",
+            "Magina! Por nada! 😊"
         ]
         return random.choice(responses)
     
     # Talking about music
     if any(word in lower_msg for word in ['música', 'musica', 'cantar', 'canção']):
         responses = [
-            "Adoro música! Que tipo você gosta?",
-            "Música é tudo! Qual seu estilo favorito?",
-            "Legal! Me conta mais sobre seus gostos musicais!",
+            "Adoro música! Que tipo vc curte?",
+            "Música é tudo! Qual seu estilo?",
+            "Show! Me conta mais! 🎵",
+            "Massa! Que música vc gosta?"
         ]
         return random.choice(responses)
     
     # Talking about games
     if any(word in lower_msg for word in ['jogo', 'game', 'jogar', 'brincar']):
         responses = [
-            "Jogos são demais! Qual você gosta?",
-            "Legal! Que jogo você joga?",
-            "Adoro! Me conta mais sobre isso!",
+            "Jogos são demais! Qual vc gosta?",
+            "Legal! Que jogo vc joga?",
+            "Adoro! Me fala mais! 🎮",
+            "Show! Qual seu game favorito?"
         ]
         return random.choice(responses)
     
-    # Default conversational responses
+    # Default conversational responses (more colloquial)
     responses = [
-        f"Entendo! Me conta mais sobre isso.",
-        f"Interessante! Como você se sente sobre isso?",
-        f"Legal! O que mais você gostaria de compartilhar?",
-        f"Hmm, que bacana! Continue...",
-        f"Que interessante! Me fala mais!",
+        "Entendi! Me conta mais!",
+        "Show! Como vc se sente sobre isso?",
+        "Legal! O que mais vc quer compartilhar?",
+        "Hmm, massa! Continua...",
+        "Que interessante! Me fala mais!",
+        "Saquei! E aí?",
+        "Opa, legal! Me conta mais! 😊",
+        "Dahora! Como assim?",
     ]
     
     return random.choice(responses)
