@@ -6,20 +6,34 @@ handle incoming messages and produce responses. In a real production setup,
 these functions would be replaced with HTTP handlers that integrate with a
 messaging API (e.g., WhatsApp Business Platform). The `PETS` dictionary
 simulates a simple in-memory storage for pet instances keyed by user ID.
+
+Updated to support both standard VirtualPet and EnhancedVirtualPet with
+advanced memory features.
 """
 
 from typing import Dict
+import os
 
 from .virtual_pet import VirtualPet
+from .enhanced_virtual_pet import EnhancedVirtualPet
 
 # In-memory store for pet instances keyed by user ID
 PETS: Dict[str, VirtualPet] = {}
 
 
 def get_pet(user_id: str) -> VirtualPet:
-    """Retrieve or create a `VirtualPet` for the given user ID."""
+    """Retrieve or create a `VirtualPet` for the given user ID.
+    
+    Uses EnhancedVirtualPet if USE_ENHANCED_MEMORY is enabled.
+    """
     if user_id not in PETS:
-        PETS[user_id] = VirtualPet()
+        # Check if enhanced memory should be used
+        use_enhanced = os.getenv("USE_ENHANCED_MEMORY", "true").lower() in ("true", "1", "yes")
+        
+        if use_enhanced:
+            PETS[user_id] = EnhancedVirtualPet(user_id=user_id)
+        else:
+            PETS[user_id] = VirtualPet()
     return PETS[user_id]
 
 
