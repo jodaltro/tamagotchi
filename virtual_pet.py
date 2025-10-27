@@ -2,9 +2,7 @@
 High-level interface to the organic virtual pet.
 
 The `VirtualPet` class wraps a `PetState` instance and provides methods to
-process user messages (u        # Lightly boost curiosidade and sociabilidade due to visual stimulation
-        self.state.drives["curiosidade"] = min(1.0, self.state.drives["curiosidade"] + 0.05)
-        self.state.drives["sociabilidade"] = min(1.0, self.state.drives["sociabilidade"] + 0.05)ting state) and generate responses based on the
+process user messages (updating state) and generate responses based on the
 selected action. It includes AI-driven memory importance detection and
 enhanced image memory capabilities, plus adaptive communication style matching.
 """
