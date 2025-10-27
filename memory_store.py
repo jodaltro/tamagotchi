@@ -24,6 +24,17 @@ except ImportError:
     # Fallback for when running as script
     CommunicationStyle = None
 
+# Import ABM modules
+try:
+    from .autobiographical_memory import AutobiographicalMemory
+    from .pet_canon import PetCanon
+    from .echo_trace import EchoTrace
+except ImportError:
+    # Fallback for when running as script
+    AutobiographicalMemory = None
+    PetCanon = None
+    EchoTrace = None
+
 @dataclass
 class MemoryItem:
     kind: str
@@ -108,13 +119,32 @@ class MemoryStore:
     # User's communication style for adaptive responses
     communication_style: Optional[object] = None  # CommunicationStyle object
     
+    # Autobiographical memory - pet's memory about itself
+    abm: Optional[object] = None  # AutobiographicalMemory object
+    
+    # Pet canon - consolidated identity
+    canon: Optional[object] = None  # PetCanon object
+    
+    # Echo trace - successful speech patterns
+    echo: Optional[object] = None  # EchoTrace object
+    
     # Memory decay tracking
     last_decay_time: datetime = field(default_factory=datetime.utcnow)
     
     def __post_init__(self):
-        """Initialize communication style if not set."""
+        """Initialize communication style and ABM components if not set."""
         if self.communication_style is None and CommunicationStyle is not None:
             self.communication_style = CommunicationStyle()
+        
+        # Initialize ABM components
+        if self.abm is None and AutobiographicalMemory is not None:
+            self.abm = AutobiographicalMemory()
+        
+        if self.canon is None and PetCanon is not None:
+            self.canon = PetCanon()
+        
+        if self.echo is None and EchoTrace is not None:
+            self.echo = EchoTrace()
 
     def add_episode(self, text: str, salience: float = 0.5, importance_score: float = 0.5) -> None:
         """Add a new episodic memory to the buffer with AI-determined importance."""

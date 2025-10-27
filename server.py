@@ -95,6 +95,12 @@ async def handle_webhook(req: WebhookRequest) -> WebhookResponse:
     if random.random() < 0.3:  # 30% chance to consolidate
         pet.state.memory.consolidate(threshold=0.4)
         logger.info("🧠 Consolidated memories into semantic knowledge")
+    
+    # Run reflection pass occasionally to update ABM and canon
+    if random.random() < 0.2:  # 20% chance for reflection pass
+        pet.reflection_pass()
+        logger.info("🔄 Completed reflection pass")
+    
     # Log memory summary and quick state info
     try:
         mem_summary = str(pet.state.memory)
