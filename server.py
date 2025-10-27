@@ -67,7 +67,7 @@ async def handle_webhook(req: WebhookRequest) -> WebhookResponse:
     # Load or create the pet state
     logger.info("Incoming webhook: user=%s, has_image=%s, message_len=%d", user_id, bool(image_b64), len(message))
     pet_state = get_pet_data(user_id)
-    pet = VirtualPet()
+    pet = VirtualPet(user_id=user_id)
     pet.state = pet_state
     # Process the message and/or image
     if image_b64:

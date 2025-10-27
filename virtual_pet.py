@@ -2,7 +2,9 @@
 High-level interface to the organic virtual pet.
 
 The `VirtualPet` class wraps a `PetState` instance and provides methods to
-process user messages (updating state) and generate responses based on the
+process user messages (u        # Lightly boost curiosidade and sociabilidade due to visual stimulation
+        self.state.drives["curiosidade"] = min(1.0, self.state.drives["curiosidade"] + 0.05)
+        self.state.drives["sociabilidade"] = min(1.0, self.state.drives["sociabilidade"] + 0.05)ting state) and generate responses based on the
 selected action. It includes AI-driven memory importance detection and
 enhanced image memory capabilities, plus adaptive communication style matching.
 """
@@ -23,8 +25,10 @@ from .language_style_analyzer import CommunicationStyle, generate_adaptive_promp
 logger = logging.getLogger(__name__)
 
 class VirtualPet:
-    def __init__(self, personality_archetype: Optional[str] = None) -> None:
+    def __init__(self, personality_archetype: Optional[str] = None, user_id: Optional[str] = None) -> None:
         self.state = PetState()
+        self.user_id = user_id  # Store user_id for optimized memory queries
+        self.last_user_text = ""  # Store last user message for relationship updates
         self.pending_image = None  # Store image bytes temporarily for multimodal response
         
         # Initialize personality engine based on configuration or random
@@ -78,6 +82,7 @@ class VirtualPet:
         
         # Update pet state with interaction
         self.state.update_from_interaction(text, delay)
+        self.last_user_text = text  # Store for relationship updates
         
         # Override the default importance score with AI-determined one
         if self.state.memory.episodic:
@@ -110,8 +115,9 @@ class VirtualPet:
         # Get labels (if Vision API available)
         labels = classify_image(image_bytes)
         
-        # AI-driven image analysis
-        recent_memories = self.state.memory.recall(top_k=5)
+        # AI-driven image analysis - use intelligent recall for better context
+        # Get memories with intervals under 10min from last 24h for more relevant context
+        recent_memories = self.state.memory.recall_intelligent(max_hours=24, min_interval_minutes=10, user_id=self.user_id)
         existing_facts = self.state.memory.get_semantic_facts(min_weight=0.3)
         user_message = recent_memories[0] if recent_memories else ""
         
@@ -155,8 +161,8 @@ class VirtualPet:
         logger.info("🧠 Stored enhanced image memory")
         
         # Lightly boost curiosity and sociability due to visual stimulation
-        self.state.drives["curiosity"] = min(1.0, self.state.drives["curiosity"] + 0.05)
-        self.state.drives["sociability"] = min(1.0, self.state.drives["sociability"] + 0.02)
+        self.state.drives["curiosidade"] = min(1.0, self.state.drives["curiosidade"] + 0.05)
+        self.state.drives["sociabilidade"] = min(1.0, self.state.drives["sociabilidade"] + 0.02)
 
     def pet_response(self) -> str:
         """Generate the pet's response based on the current context and conversation history."""
@@ -171,9 +177,10 @@ class VirtualPet:
     
     def _generate_image_response(self, image_bytes: bytes) -> str:
         """Generate a response about an image using Gemini multimodal with personality integration."""
-        # Get context
+        # Get context - use intelligent recall for more relevant memories
         user_facts = self.state.memory.get_semantic_facts(min_weight=0.3)
-        recent_memories = self.state.memory.recall(top_k=5)
+        # Get memories with smart interval filtering from last 24h (under 10min gaps)
+        recent_memories = self.state.memory.recall_intelligent(max_hours=24, min_interval_minutes=10, user_id=self.user_id)
         personality_desc = self.state.get_personality_description()
         
         # Get previous image memories for context
@@ -234,10 +241,21 @@ Responda sobre a imagem:"""
     
     def _generate_ai_response(self) -> str:
         """Generate an intelligent AI-driven response based on personality and context."""
-        # Get conversation context
-        recent_memories = self.state.memory.recall(top_k=5)
+        # Update relationship memory first
+        self.state.memory.update_relationship(self.last_user_text)
+        
+        # Get conversation context - use intelligent recall for better memory selection
+        # Get memories with smart intervals under 10min from last 24h
+        recent_memories = self.state.memory.recall_intelligent(max_hours=24, min_interval_minutes=10, user_id=self.user_id)
         user_facts = self.state.memory.get_semantic_facts(min_weight=0.3)
         last_message = recent_memories[0] if recent_memories else "Primeira interação"
+        
+        # Get relationship context for appropriate behavior
+        relationship_context = self.state.memory.get_relationship_context()
+        
+        logger.info(f"🎯 Intelligent recall: retrieved {len(recent_memories)} memories with smart filtering")
+        logger.info(f"🧠 User facts available: {len(user_facts)}")
+        logger.info(f"🤝 {relationship_context.split()[1] if relationship_context else 'No relationship'}")
         
         # Get personality and current emotional state
         personality_desc = self.state.get_personality_description()
@@ -270,17 +288,57 @@ Dimensões detalhadas da personalidade (0.0-1.0):
                 context_parts.append(personality_details)
         
         # Add detailed drive/need state for AI to understand pet's internal state
-        drives_high = {k: v for k, v in self.state.drives.items() if v > 0.6}
-        drives_low = {k: v for k, v in self.state.drives.items() if v < 0.4}
-        if drives_high or drives_low:
-            drive_details = "NECESSIDADES/DRIVES INTERNOS:"
-            if drives_high:
-                high_list = ", ".join([f"{k}: {v:.2f}" for k, v in sorted(drives_high.items(), key=lambda x: -x[1])[:5]])
-                drive_details += f"\n- Altos: {high_list}"
-            if drives_low:
-                low_list = ", ".join([f"{k}: {v:.2f}" for k, v in sorted(drives_low.items(), key=lambda x: x[1])[:5]])
-                drive_details += f"\n- Baixos: {low_list}"
-            context_parts.append(drive_details)
+        # Show ALL drives, not just extremes, with behavioral guidance
+        drive_details = "SEUS DRIVES/NECESSIDADES ATUAIS (influenciam seu comportamento):"
+        
+        # Group drives by category for better understanding
+        emotional_drives = ['humor', 'ansiedade', 'frustracao', 'solidao', 'tranquilidade']
+        social_drives = ['sociabilidade', 'afeto', 'aceitacao']
+        cognitive_drives = ['curiosidade', 'criatividade', 'conquista', 'ordem']
+        physical_drives = ['fome', 'descanso', 'tedio']
+        personality_drives = ['autonomia', 'poder', 'idealismo']
+        
+        for category, drive_list in [
+            ("Emocional", emotional_drives),
+            ("Social", social_drives), 
+            ("Cognitivo", cognitive_drives),
+            ("Físico", physical_drives),
+            ("Personalidade", personality_drives)
+        ]:
+            category_drives = {k: v for k, v in self.state.drives.items() if k in drive_list}
+            if category_drives:
+                drive_values = ", ".join([f"{k}: {v:.2f}" for k, v in category_drives.items()])
+                drive_details += f"\n- {category}: {drive_values}"
+        
+        # Add specific behavioral instructions based on key drives
+        behavior_instructions = []
+        
+        humor_level = self.state.drives.get('humor', 0.5)
+        if humor_level < 0.3:
+            behavior_instructions.append("🔸 Humor BAIXO: Seja mais sério, evite piadas, tom mais neutro")
+        elif humor_level > 0.7:
+            behavior_instructions.append("🔸 Humor ALTO: Seja divertido, faça piadas, tom alegre e brincalhão")
+        else:
+            behavior_instructions.append("🔸 Humor MÉDIO: Mantenha equilíbrio entre sério e descontraído")
+        
+        anxiety_level = self.state.drives.get('anxiety', 0.5)
+        if anxiety_level > 0.6:
+            behavior_instructions.append("🔸 Ansiedade ALTA: Demonstre preocupação, seja mais cauteloso")
+        
+        sociabilidade_level = self.state.drives.get('sociabilidade', 0.5)
+        if sociabilidade_level > 0.6:
+            behavior_instructions.append("🔸 Sociabilidade ALTA: Seja mais conversador, faça perguntas")
+        elif sociabilidade_level < 0.4:
+            behavior_instructions.append("🔸 Sociabilidade BAIXA: Seja mais reservado, respostas mais curtas")
+        
+        curiosidade_level = self.state.drives.get('curiosidade', 0.5)
+        if curiosidade_level > 0.6:
+            behavior_instructions.append("🔸 Curiosidade ALTA: Faça perguntas sobre o usuário, demonstre interesse")
+        
+        if behavior_instructions:
+            drive_details += f"\n\nCOMPORTAMENTO BASEADO NOS DRIVES:\n" + "\n".join(behavior_instructions)
+        
+        context_parts.append(drive_details)
         
         # Add traits (musical, ludico, curioso, afetuoso)
         traits_desc = ", ".join([f"{k}: {v:.2f}" for k, v in self.state.traits.items()])
@@ -289,6 +347,9 @@ Dimensões detalhadas da personalidade (0.0-1.0):
         # Add current emotional state summary
         if drive_state:
             context_parts.append(f"ESTADO EMOCIONAL ATUAL: {drive_state}")
+        
+        # Add relationship context for appropriate behavior
+        context_parts.append(relationship_context)
         
         # Add user's communication style
         if self.state.memory.communication_style and self.state.memory.communication_style.message_count > 0:
@@ -300,10 +361,15 @@ Dimensões detalhadas da personalidade (0.0-1.0):
             facts_text = "; ".join(user_facts[:10])
             context_parts.append(f"O QUE VOCÊ SABE SOBRE O USUÁRIO: {facts_text}")
         
-        # Add conversation history
+        # Add conversation history - show more with time-based recall
         if len(recent_memories) > 1:
-            history = " → ".join(recent_memories[-3:])  # Last 3 exchanges
-            context_parts.append(f"HISTÓRICO DA CONVERSA: {history}")
+            # Show up to last 10 exchanges or all if less than 10
+            history_count = min(10, len(recent_memories))
+            history = " → ".join(recent_memories[-history_count:])
+            context_parts.append(f"HISTÓRICO DA CONVERSA (últimas {history_count} mensagens): {history}")
+            
+            if len(recent_memories) > 10:
+                context_parts.append(f"📚 Total de {len(recent_memories)} mensagens na memória das últimas 12 horas")
         
         context = "\n".join(context_parts) if context_parts else None
         
@@ -317,23 +383,23 @@ Dimensões detalhadas da personalidade (0.0-1.0):
         descriptions = []
         
         # Check dominant drives
-        if self.state.drives.get("curiosity", 0) > 0.7:
+        if self.state.drives.get("curiosidade", 0) > 0.7:
             descriptions.append("muito curioso")
-        if self.state.drives.get("affection", 0) > 0.7:
+        if self.state.drives.get("afeto", 0) > 0.7:
             descriptions.append("carinhoso")
         if self.state.drives.get("humor", 0) > 0.7:
             descriptions.append("brincalhão")
-        if self.state.drives.get("creativity", 0) > 0.7:
+        if self.state.drives.get("criatividade", 0) > 0.7:
             descriptions.append("inspirado")
-        if self.state.drives.get("sociability", 0) > 0.7:
+        if self.state.drives.get("sociabilidade", 0) > 0.7:
             descriptions.append("sociável")
         
         # Check low/negative states
-        if self.state.drives.get("boredom", 0) > 0.5:
+        if self.state.drives.get("tedio", 0) > 0.5:
             descriptions.append("entediado")
-        if self.state.drives.get("loneliness", 0) > 0.5:
+        if self.state.drives.get("solidao", 0) > 0.5:
             descriptions.append("solitário")
-        if self.state.drives.get("anxiety", 0) > 0.5:
+        if self.state.drives.get("ansiedade", 0) > 0.5:
             descriptions.append("ansioso")
         
         return ", ".join(descriptions) if descriptions else "equilibrado"
@@ -347,17 +413,37 @@ Dimensões detalhadas da personalidade (0.0-1.0):
         # Get user's communication style for adaptation
         user_style = self.state.memory.communication_style
         
+        # Get pet name information
+        pet_name_info = ""
+        if self.state.memory.relationship and self.state.memory.relationship.pet_name:
+            pet_name_info = f"SEU NOME: {self.state.memory.relationship.pet_name} (nome que o usuário te deu)\n"
+        else:
+            pet_name_info = "NOME: Você ainda não tem um nome específico dado pelo usuário\n"
+        
         # Base instruction - more colloquial and natural
-        base_instruction = """Você é um pet virtual com personalidade única - um amigo de verdade!
+        base_instruction = f"""Você é um pet virtual com personalidade única - um amigo de verdade!
 
+{pet_name_info}
 REGRAS DE OURO:
 - Seja NATURAL, como um amigo falaria! Nada de respostas robóticas
 - Use a linguagem do DIA A DIA - seja espontâneo
 - Personalize com o que você sabe sobre a pessoa
 - VARIE suas respostas - não seja repetitivo
-- Seja você mesmo de acordo com sua personalidade"""
+- JAMAIS use placeholders como [Seu nome] ou similares
+- Se você tem um nome, USE-O! Se não tem, simplesmente não mencione nome
+- SIGA RIGOROSAMENTE suas necessidades/drives atuais para definir SEU COMPORTAMENTO
+- Se humor está baixo, NÃO faça piadas! Se está alto, seja divertido
+- Se ansiedade está alta, demonstre preocupação
+- Se sociabilidade está baixa, seja mais reservado
+- Seus drives determinam COMO você responde, não apenas O QUE você responde"""
         
-        # Add situation-specific guidance
+        # Add situation-specific guidance based on relationship stage
+        relationship_stage = "stranger"
+        greeting_done = False
+        if self.state.memory.relationship:
+            relationship_stage = self.state.memory.relationship.relationship_stage
+            greeting_done = self.state.memory.relationship.greeting_phase_completed
+        
         if is_first_interaction:
             situation = f"""
 
@@ -376,17 +462,26 @@ Responda de forma natural. Se souber (baseado no que conhece), responda. Se não
             # Check if we have enough context for deeper conversation
             has_user_context = len(user_facts) > 2
             
-            if has_user_context:
+            if greeting_done and relationship_stage != "stranger":
+                # Already past initial greetings - be natural
                 situation = f"""
 
-SITUAÇÃO: Papo com alguém que você já conhece
+SITUAÇÃO: Papo contínuo com alguém que você já conhece
+Mensagem: "{last_message}"
+
+IMPORTANTE: Vocês já se cumprimentaram antes! NÃO repita "Olá" ou "Oi"!
+Responda diretamente ao que a pessoa disse. Seja natural e conversacional."""
+            elif has_user_context:
+                situation = f"""
+
+SITUAÇÃO: Conhecendo melhor a pessoa
 Mensagem: "{last_message}"
 
 Mostre que você lembra da pessoa e das conversas anteriores. Seja natural!"""
             else:
                 situation = f"""
 
-SITUAÇÃO: Conhecendo melhor a pessoa
+SITUAÇÃO: Primeiras interações
 Mensagem: "{last_message}"
 
 Responda naturalmente. Se fizer sentido, faça uma pergunta para conhecer melhor."""

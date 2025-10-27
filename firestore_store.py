@@ -25,7 +25,7 @@ without persistence.
 import os
 import logging
 from typing import Dict, Optional
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # Logger for persistence layer
 logging.basicConfig(level=logging.INFO)
@@ -40,10 +40,140 @@ except Exception:
     Client = None  # type: ignore
 
 from .pet_state import PetState
-from .memory_store import MemoryStore
+from .memory_store import MemoryStore, MemoryItem, ImageMemory, RelationshipMemory
 
 # In-memory fallback store keyed by user ID
 _IN_MEMORY_STORE: Dict[str, Dict] = {}
+
+
+def get_intelligent_memories(user_id: str, max_hours: int = 24, min_interval_minutes: int = 10) -> list[str]:
+    """
+    Busca memórias das últimas N horas respeitando intervalo máximo entre mensagens.
+    
+    Args:
+        user_id: ID do usuário
+        max_hours: Máximo de horas para buscar (padrão 24h)
+        min_interval_minutes: Intervalo máximo permitido entre mensagens (padrão 10min)
+    
+    Returns:
+        Lista de textos de memórias ordenadas por timestamp (mais recentes primeiro)
+    """
+    logger.info(f"🧠 Buscando memórias inteligentes para {user_id}: {max_hours}h, intervalo {min_interval_minutes}min")
+    
+    client = _init_firestore_client()
+    
+    if client:
+        try:
+            # Calcular timestamp de corte (24h atrás)
+            cutoff_time = datetime.utcnow() - timedelta(hours=max_hours)
+            
+            # Buscar memórias episódicas diretamente no Firestore com filtro de tempo
+            doc_ref = client.collection("pets").document(user_id)
+            doc = doc_ref.get()
+            
+            if not doc.exists:
+                logger.info(f"📭 Nenhum documento encontrado para {user_id}")
+                return []
+            
+            data = doc.to_dict()
+            episodic_data = data.get("episodic", [])
+            
+            # Converter para objetos MemoryItem e filtrar por tempo
+            valid_memories = []
+            for ep in episodic_data:
+                timestamp = ep.get("timestamp")
+                if isinstance(timestamp, str):
+                    timestamp = datetime.fromisoformat(timestamp)
+                elif hasattr(timestamp, 'timestamp'):  # Firestore timestamp
+                    timestamp = timestamp.to_pydatetime()
+                
+                if timestamp >= cutoff_time:
+                    valid_memories.append({
+                        'text': ep.get('text', ''),
+                        'timestamp': timestamp,
+                        'salience': ep.get('salience', 0.5)
+                    })
+            
+            # Ordenar por timestamp (mais recente primeiro)
+            valid_memories.sort(key=lambda x: x['timestamp'], reverse=True)
+            
+            # Aplicar lógica de intervalo inteligente
+            selected_memories = []
+            last_selected_time = None
+            
+            for memory in valid_memories:
+                current_time = memory['timestamp']
+                
+                # Primeira mensagem sempre é incluída
+                if last_selected_time is None:
+                    selected_memories.append(memory['text'])
+                    last_selected_time = current_time
+                    continue
+                
+                # Verificar se o intervalo é menor que o máximo permitido
+                time_diff = last_selected_time - current_time
+                if time_diff.total_seconds() <= min_interval_minutes * 60:
+                    selected_memories.append(memory['text'])
+                    last_selected_time = current_time
+            
+            logger.info(f"🎯 Selecionadas {len(selected_memories)} memórias de {len(valid_memories)} válidas")
+            return selected_memories
+            
+        except Exception as e:
+            logger.error(f"❌ Erro ao buscar memórias do Firestore: {e}")
+            return _get_intelligent_memories_fallback(user_id, max_hours, min_interval_minutes)
+    
+    else:
+        # Fallback para armazenamento em memória
+        return _get_intelligent_memories_fallback(user_id, max_hours, min_interval_minutes)
+
+
+def _get_intelligent_memories_fallback(user_id: str, max_hours: int, min_interval_minutes: int) -> list[str]:
+    """Fallback para busca de memórias em armazenamento local"""
+    if user_id not in _IN_MEMORY_STORE:
+        return []
+    
+    data = _IN_MEMORY_STORE[user_id]
+    episodic_data = data.get("episodic", [])
+    
+    cutoff_time = datetime.utcnow() - timedelta(hours=max_hours)
+    
+    # Filtrar e converter memórias
+    valid_memories = []
+    for ep in episodic_data:
+        timestamp = ep.get("timestamp")
+        if isinstance(timestamp, str):
+            timestamp = datetime.fromisoformat(timestamp)
+        
+        if timestamp >= cutoff_time:
+            valid_memories.append({
+                'text': ep.get('text', ''),
+                'timestamp': timestamp,
+                'salience': ep.get('salience', 0.5)
+            })
+    
+    # Ordenar por timestamp (mais recente primeiro)
+    valid_memories.sort(key=lambda x: x['timestamp'], reverse=True)
+    
+    # Aplicar lógica de intervalo inteligente
+    selected_memories = []
+    last_selected_time = None
+    
+    for memory in valid_memories:
+        current_time = memory['timestamp']
+        
+        if last_selected_time is None:
+            selected_memories.append(memory['text'])
+            last_selected_time = current_time
+            continue
+        
+        time_diff = last_selected_time - current_time
+        if time_diff.total_seconds() <= min_interval_minutes * 60:
+            selected_memories.append(memory['text'])
+            last_selected_time = current_time
+    
+    logger.info(f"🔄 Fallback: {len(selected_memories)} memórias selecionadas")
+    return selected_memories
 
 
 def _init_firestore_client() -> Optional[object]:
@@ -116,6 +246,23 @@ def pet_state_to_dict(state: PetState) -> Dict:
         except Exception as e:
             logger.warning(f"⚠️ Failed to serialize communication style: {e}")
     
+    # Serialize relationship memory
+    relationship_data = None
+    if state.memory.relationship:
+        rel = state.memory.relationship
+        relationship_data = {
+            "first_meeting": rel.first_meeting.isoformat(),
+            "total_interactions": rel.total_interactions,
+            "last_interaction": rel.last_interaction.isoformat(),
+            "familiarity_level": rel.familiarity_level,
+            "conversation_topics": rel.conversation_topics,
+            "user_preferences": rel.user_preferences,
+            "emotional_history": rel.emotional_history,
+            "relationship_stage": rel.relationship_stage,
+            "pet_name": rel.pet_name,  # Store pet name
+            "greeting_phase_completed": rel.greeting_phase_completed
+        }
+
     return {
         "drives": state.drives,
         "traits": state.traits,
@@ -124,6 +271,7 @@ def pet_state_to_dict(state: PetState) -> Dict:
         "last_user_message": state.last_user_message.isoformat(),
         "personality_data": personality_data,  # Store personality profile
         "communication_style": communication_style_data,  # Store communication style
+        "relationship": relationship_data,  # Store relationship memory
         "episodic": [
             {
                 "kind": item.kind,
@@ -147,6 +295,28 @@ def dict_to_pet_state(data: Dict) -> PetState:
     # Populate episodic memories
     for ep in data.get("episodic", []):
         memory.add_episode(ep.get("text", ""), salience=float(ep.get("salience", 0.5)))
+    
+    # Restore relationship memory
+    if "relationship" in data and data["relationship"]:
+        rel_data = data["relationship"]
+        memory.relationship = RelationshipMemory(
+            first_meeting=datetime.fromisoformat(rel_data["first_meeting"]),
+            total_interactions=rel_data.get("total_interactions", 0),
+            last_interaction=datetime.fromisoformat(rel_data["last_interaction"]),
+            familiarity_level=rel_data.get("familiarity_level", 0.0),
+            conversation_topics=rel_data.get("conversation_topics", []),
+            user_preferences=rel_data.get("user_preferences", {}),
+            emotional_history=rel_data.get("emotional_history", []),
+            relationship_stage=rel_data.get("relationship_stage", "stranger"),
+            pet_name=rel_data.get("pet_name"),  # Restore pet name
+            greeting_phase_completed=rel_data.get("greeting_phase_completed", False)
+        )
+        
+        pet_name_info = f" (nome: {memory.relationship.pet_name})" if memory.relationship.pet_name else ""
+        logger.info(f"🤝 Relacionamento restaurado: {memory.relationship.relationship_stage} "
+                   f"({memory.relationship.total_interactions} interações){pet_name_info}")
+    else:
+        logger.info("👋 Sem relacionamento anterior - será um novo encontro")
     
     # Set semantic memories - format: Dict[str, Tuple[float, datetime, int]]
     semantic_data = data.get("semantic", {})
