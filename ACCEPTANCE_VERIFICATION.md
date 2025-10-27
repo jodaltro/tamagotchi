@@ -133,15 +133,9 @@ curl http://localhost:8080/metrics
 - Falls back to Gemini API, then rule-based responses
 - No unhandled exceptions propagate to user
 
-**Code:**
-```python
-# ollama_client.py
-except requests.exceptions.Timeout:
-    error_msg = "Ollama request timeout"
-    logger.error(f"⏱️ {error_msg}")
-    metadata["error"] = error_msg
-    return None, metadata
-```
+**Error Handling:**
+See `ollama_client.py` lines 92-107 for timeout and exception handling.
+All errors logged and returned in metadata without crashing.
 
 **Status:** ✅ IMPLEMENTED
 
@@ -190,7 +184,7 @@ curl http://localhost:8080/metrics/report
 - Creates commitment, verifies retrieval
 - Checks active C&C items
 
-**Result:** ✅ PASSING
+**Result:** ✅ DESIGNED (in test_acceptance.py)
 
 ---
 
@@ -202,7 +196,7 @@ curl http://localhost:8080/metrics/report
 - Verifies VOICE item created
 - Checks subsequent responses
 
-**Result:** ✅ PASSING
+**Result:** ✅ DESIGNED (in test_acceptance.py)
 
 ---
 
@@ -213,7 +207,7 @@ curl http://localhost:8080/metrics/report
 - Switches between agenda, health, hobby
 - Verifies no contradictions
 
-**Result:** ✅ PASSING
+**Result:** ✅ DESIGNED (in test_acceptance.py)
 
 ---
 
@@ -224,17 +218,41 @@ curl http://localhost:8080/metrics/report
 - Forces contradiction
 - Verifies SCG detects and corrects
 
+**Result:** ✅ DESIGNED (in test_acceptance.py)
+
+---
+
+### ✅ Test 5: Telemetry
+
+**Implementation:**
+- Test in `test_minimal_acceptance.py::test_telemetry()`
+- Verifies metric collection
+- Checks report generation
+
 **Result:** ✅ PASSING
+
+---
+
+### ✅ Test 6: Core Modules
+
+**Implementation:**
+- Tests in `test_minimal_acceptance.py`
+- Covers: Ollama client, memory retriever, SCG, PET-CANON, ABM
+
+**Result:** ✅ 6/6 PASSING
 
 ---
 
 ## Final Criteria (Critérios de aceite finais)
 
-### ✅ 1. 4/4 tests approved
+### ⚠️ 1. 4/4 tests approved
 
-**Status:** ✅ 6/6 minimal tests passing
-- All core modules tested and working
-- Ollama client, memory retriever, telemetry, SCG, PET-CANON, ABM
+**Status:** 
+- ✅ 6/6 minimal module tests passing
+- ⚠️ 4 full acceptance tests designed (require live Ollama to run)
+
+**Note:** Full end-to-end tests in `test_acceptance.py` require running Ollama service.
+Module tests in `test_minimal_acceptance.py` verify all core functionality.
 
 ---
 
@@ -318,20 +336,28 @@ In isolated tests, SCG validation logic passes all checks.
 
 ## Summary
 
-| Category | Total | Implemented | Pending |
-|----------|-------|-------------|---------|
+| Category | Total | Implemented | Pending Live Test |
+|----------|-------|-------------|-------------------|
 | Infrastructure | 3 | 3 | 0 |
 | Integration | 3 | 3 | 0 |
 | API Contract | 2 | 2 | 0 |
 | Telemetry | 2 | 2 | 0 |
-| Acceptance Tests | 4 | 4 | 0 |
-| Final Criteria | 3 | 3 | 0 |
+| Acceptance Tests | 4 | 4 | 4* |
+| Final Criteria | 3 | 3 | 2** |
 | Operational Policies | 5 | 5 | 0 |
-| **TOTAL** | **22** | **22** | **0** |
+| **TOTAL** | **22** | **22** | **6** |
 
-**Success Rate: 100%** ✅
+\* Acceptance tests designed, pending live Ollama deployment  
+\** Consistency rate & token reduction require live testing
 
-All acceptance criteria from the problem statement have been successfully implemented and tested.
+**Implementation: 100%** ✅  
+**Verification: 73% complete** (16/22 fully verified, 6 pending live deployment)
+
+All code is implemented and tested at the module level. Final verification requires:
+1. Deploy Ollama service with docker-compose
+2. Run full acceptance tests
+3. Measure consistency rate in production
+4. Validate token reduction vs baseline
 
 ## Next Steps for Production
 
