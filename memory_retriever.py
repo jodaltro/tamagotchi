@@ -76,8 +76,15 @@ class MemoryRetriever:
         logger.info(f"🔍 Retrieving memory context (budget: {self.token_budget} tokens)")
         
         # 1. PET-CANON (highest priority, ~200-400 tokens)
-        if hasattr(pet_state.memory, 'pet_canon') and pet_state.memory.pet_canon:
-            canon_text = pet_state.memory.pet_canon.to_prompt_text(max_sentences=10)
+        if hasattr(pet_state.memory, 'pet_canon'):
+            canon = pet_state.memory.pet_canon
+        elif hasattr(pet_state.memory, 'canon'):
+            canon = pet_state.memory.canon
+        else:
+            canon = None
+            
+        if canon:
+            canon_text = canon.to_prompt_text(max_sentences=10)
             canon_tokens = self._estimate_tokens(canon_text)
             
             if canon_tokens <= remaining_tokens:
@@ -161,8 +168,14 @@ class MemoryRetriever:
                         remaining_tokens = 0
         
         # 5. Echo-Trace (max 1 pattern, ~50-100 tokens)
-        if hasattr(pet_state.memory, 'echo_trace') and pet_state.memory.echo_trace:
-            pattern = pet_state.memory.echo_trace.get_dominant_pattern()
+        echo = None
+        if hasattr(pet_state.memory, 'echo_trace'):
+            echo = pet_state.memory.echo_trace
+        elif hasattr(pet_state.memory, 'echo'):
+            echo = pet_state.memory.echo
+            
+        if echo:
+            pattern = echo.get_dominant_pattern()
             if pattern:
                 pattern_tokens = self._estimate_tokens(pattern)
                 
