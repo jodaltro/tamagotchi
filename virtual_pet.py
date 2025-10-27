@@ -166,6 +166,16 @@ class VirtualPet:
 
     def pet_response(self) -> str:
         """Generate the pet's response based on the current context and conversation history."""
+        import time
+        from .telemetry import get_telemetry
+        
+        start_time = time.time()
+        tokens_in = 0
+        tokens_out = 0
+        consistency_passed = True
+        consistency_issues_count = 0
+        model_used = "unknown"
+        
         # Check if there's a pending image to analyze
         if self.pending_image:
             draft_response = self._generate_image_response(self.pending_image)
@@ -175,14 +185,44 @@ class VirtualPet:
             draft_response = self._generate_ai_response()
         
         # Apply Self-Consistency Guard (SCG) before sending response
-        final_response = self._apply_consistency_guard(draft_response)
+        final_response, scg_info = self._apply_consistency_guard(draft_response)
+        consistency_passed = scg_info["passed"]
+        consistency_issues_count = scg_info["issues_count"]
+        
+        # Calculate latency
+        latency_ms = (time.time() - start_time) * 1000
+        
+        # Try to extract token counts from Ollama client stats if available
+        try:
+            from .ollama_client import get_ollama_client
+            ollama = get_ollama_client()
+            if ollama and ollama.total_calls > 0:
+                # Get the last call stats (approximate)
+                stats = ollama.get_stats()
+                model_used = stats.get("model", "unknown")
+                # Rough estimate based on prompt and response length
+                tokens_in = len(self.last_user_text) // 4  # Approximate
+                tokens_out = len(final_response) // 4  # Approximate
+        except Exception:
+            pass
+        
+        # Record metrics
+        telemetry = get_telemetry()
+        telemetry.record_turn(
+            latency_ms=latency_ms,
+            tokens_in=tokens_in,
+            tokens_out=tokens_out,
+            consistency_passed=consistency_passed,
+            consistency_issues=consistency_issues_count,
+            model=model_used
+        )
         
         # Post-processing: ABM extraction and consistency check
         self._process_response_for_abm(final_response)
         
         return final_response
     
-    def _apply_consistency_guard(self, draft_response: str) -> str:
+    def _apply_consistency_guard(self, draft_response: str) -> tuple:
         """
         Apply Self-Consistency Guard to check and correct draft response.
         
@@ -190,7 +230,8 @@ class VirtualPet:
             draft_response: Initial generated response
         
         Returns:
-            Final response (corrected if needed)
+            Tuple of (final_response, info_dict)
+            info_dict contains: passed (bool), issues_count (int)
         """
         from .self_consistency_guard import SelfConsistencyGuard
         
@@ -207,15 +248,20 @@ class VirtualPet:
             self.state.memory.pet_canon if hasattr(self.state.memory, 'pet_canon') else None
         )
         
+        info = {
+            "passed": is_consistent,
+            "issues_count": len(issues)
+        }
+        
         if not is_consistent:
             logger.warning(f"⚠️ SCG detected {len(issues)} consistency issues")
             # Attempt auto-correction
             corrected = scg.correct_response(draft_response, issues)
             logger.info(f"🔧 SCG applied corrections")
-            return corrected
+            return corrected, info
         else:
             logger.info("✅ Response passed SCG check")
-            return draft_response
+            return draft_response, info
     
     def _generate_image_response(self, image_bytes: bytes) -> str:
         """Generate a response about an image using Gemini multimodal with personality integration."""
