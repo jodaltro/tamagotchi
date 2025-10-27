@@ -236,6 +236,11 @@ Responda sobre a imagem:"""
         if personality_desc:
             context_parts.append(f"SUA PERSONALIDADE: {personality_desc}")
         
+        # Add user's communication style
+        if self.state.memory.communication_style and self.state.memory.communication_style.message_count > 0:
+            style_desc = self.state.memory.communication_style.get_style_description()
+            context_parts.append(f"ESTILO DE COMUNICAÇÃO DO USUÁRIO: {style_desc}")
+        
         # Add what we know about the user
         if user_facts:
             facts_text = "; ".join(user_facts[:10])

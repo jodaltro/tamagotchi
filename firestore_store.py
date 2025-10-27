@@ -108,6 +108,14 @@ def pet_state_to_dict(state: PetState) -> Dict:
         else:
             logger.warning(f"⚠️ Unknown semantic format for '{key}': {value}")
     
+    # Serialize communication style if present
+    communication_style_data = None
+    if state.memory.communication_style:
+        try:
+            communication_style_data = state.memory.communication_style.to_dict()
+        except Exception as e:
+            logger.warning(f"⚠️ Failed to serialize communication style: {e}")
+    
     return {
         "drives": state.drives,
         "traits": state.traits,
@@ -115,6 +123,7 @@ def pet_state_to_dict(state: PetState) -> Dict:
         "stage": state.stage,
         "last_user_message": state.last_user_message.isoformat(),
         "personality_data": personality_data,  # Store personality profile
+        "communication_style": communication_style_data,  # Store communication style
         "episodic": [
             {
                 "kind": item.kind,
@@ -131,6 +140,7 @@ def pet_state_to_dict(state: PetState) -> Dict:
 def dict_to_pet_state(data: Dict) -> PetState:
     """Deserialize a dictionary back into a PetState instance."""
     from datetime import datetime
+    from .language_style_analyzer import CommunicationStyle
     
     memory = MemoryStore()
     
@@ -158,6 +168,15 @@ def dict_to_pet_state(data: Dict) -> PetState:
                 memory.semantic[str(key)] = (float(value), datetime.utcnow(), 1)
             else:
                 logger.warning(f"⚠️ Unknown semantic memory format for '{key}': {value}")
+    
+    # Restore communication style if present
+    communication_style_data = data.get("communication_style")
+    if communication_style_data:
+        try:
+            memory.communication_style = CommunicationStyle.from_dict(communication_style_data)
+            logger.info(f"✅ Restored communication style: {memory.communication_style.get_style_description()}")
+        except Exception as e:
+            logger.warning(f"⚠️ Failed to restore communication style: {e}")
     
     # Create PetState
     state = PetState()
