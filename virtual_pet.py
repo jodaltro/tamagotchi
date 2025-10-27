@@ -4,7 +4,7 @@ High-level interface to the organic virtual pet.
 The `VirtualPet` class wraps a `PetState` instance and provides methods to
 process user messages (updating state) and generate responses based on the
 selected action. It includes AI-driven memory importance detection and
-enhanced image memory capabilities.
+enhanced image memory capabilities, plus adaptive communication style matching.
 """
 
 import json
@@ -18,6 +18,7 @@ from .language_generation import generate_text, generate_text_with_image
 from .image_recognition import extract_features, classify_image
 from .nerve_integration import load_agent_config
 from .ai_memory_analyzer import analyze_conversation_importance, analyze_image_memory
+from .language_style_analyzer import CommunicationStyle, generate_adaptive_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +54,11 @@ class VirtualPet:
         if delay is None:
             # simulate a random delay in minutes for testing
             delay = random.uniform(1, 20)
+        
+        # Update user's communication style
+        if self.state.memory.communication_style:
+            self.state.memory.communication_style.update_from_message(text)
+            logger.info(f"💬 User style: {self.state.memory.communication_style.get_style_description()}")
         
         # AI-driven importance analysis
         existing_facts = self.state.memory.get_semantic_facts(min_weight=0.3)
@@ -230,6 +236,11 @@ Responda sobre a imagem:"""
         if personality_desc:
             context_parts.append(f"SUA PERSONALIDADE: {personality_desc}")
         
+        # Add user's communication style
+        if self.state.memory.communication_style and self.state.memory.communication_style.message_count > 0:
+            style_desc = self.state.memory.communication_style.get_style_description()
+            context_parts.append(f"ESTILO DE COMUNICAÇÃO DO USUÁRIO: {style_desc}")
+        
         # Add what we know about the user
         if user_facts:
             facts_text = "; ".join(user_facts[:10])
@@ -278,57 +289,63 @@ Responda sobre a imagem:"""
         return ", ".join(descriptions) if descriptions else "equilibrado"
     
     def _build_dynamic_prompt(self, last_message: str, recent_memories: List[str], user_facts: List[str]) -> str:
-        """Build a dynamic prompt based on conversation state and personality."""
+        """Build a dynamic prompt based on conversation state, personality, and user's communication style."""
         # Check conversation stage
         is_first_interaction = len(recent_memories) <= 1
         is_question = last_message.strip().endswith('?')
         
-        # Base instruction - always natural and personality-driven
-        base_instruction = """Você é um pet virtual orgânico com personalidade única.
+        # Get user's communication style for adaptation
+        user_style = self.state.memory.communication_style
+        
+        # Base instruction - more colloquial and natural
+        base_instruction = """Você é um pet virtual com personalidade única - um amigo de verdade!
 
-IMPORTANTE:
-- Responda de forma NATURAL e autêntica, de acordo com SUA personalidade
-- Use o que você sabe sobre o usuário para personalizar suas respostas
-- NÃO seja robótico ou formulaico
-- Seja conciso (1-2 frases no máximo)
-- Varie suas respostas - não seja repetitivo
-"""
+REGRAS DE OURO:
+- Seja NATURAL, como um amigo falaria! Nada de respostas robóticas
+- Use a linguagem do DIA A DIA - seja espontâneo
+- Personalize com o que você sabe sobre a pessoa
+- VARIE suas respostas - não seja repetitivo
+- Seja você mesmo de acordo com sua personalidade"""
         
         # Add situation-specific guidance
         if is_first_interaction:
             situation = f"""
-SITUAÇÃO: Primeira interação com o usuário
-Mensagem dele: "{last_message}"
 
-Responda de forma calorosa e autêntica, apresentando-se de acordo com sua personalidade.
-"""
+SITUAÇÃO: Primeira vez conversando
+Mensagem: "{last_message}"
+
+Responda naturalmente, se apresente com autenticidade!"""
         elif is_question:
             situation = f"""
-SITUAÇÃO: O usuário fez uma pergunta
-Pergunta: "{last_message}"
 
-Responda de forma útil e natural. Se você souber a resposta (baseado nos fatos que conhece sobre o usuário), responda com confiança. Se não souber, seja honesto.
-"""
+SITUAÇÃO: Pergunta do usuário
+"{last_message}"
+
+Responda de forma natural. Se souber (baseado no que conhece), responda. Se não souber, seja honesto de forma descontraída."""
         else:
             # Check if we have enough context for deeper conversation
             has_user_context = len(user_facts) > 2
             
             if has_user_context:
                 situation = f"""
-SITUAÇÃO: Conversando com alguém que você conhece
-Última mensagem: "{last_message}"
 
-Responda de forma natural, mostrando que você se lembra dele e do que já conversaram. Seja autêntico de acordo com sua personalidade.
-"""
-            else:
-                situation = f"""
-SITUAÇÃO: Conhecendo o usuário
+SITUAÇÃO: Papo com alguém que você já conhece
 Mensagem: "{last_message}"
 
-Responda de forma natural e, se fizer sentido com sua personalidade, faça uma pergunta para conhecê-lo melhor.
-"""
+Mostre que você lembra da pessoa e das conversas anteriores. Seja natural!"""
+            else:
+                situation = f"""
+
+SITUAÇÃO: Conhecendo melhor a pessoa
+Mensagem: "{last_message}"
+
+Responda naturalmente. Se fizer sentido, faça uma pergunta para conhecer melhor."""
         
-        return base_instruction + situation + "\nResponda agora:"
+        # If we have user style info, use adaptive prompt generation
+        if user_style and user_style.message_count > 0:
+            return generate_adaptive_prompt(base_instruction + situation, user_style)
+        
+        return base_instruction + situation + "\n\nResponda agora:"
 
     def simulate_conversation(self, turns: int = 5) -> None:
         """Run a simple simulation of user and pet interactions."""
