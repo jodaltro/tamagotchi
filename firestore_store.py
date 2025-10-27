@@ -234,8 +234,3 @@ def save_pet_data(user_id: str, state: PetState) -> None:
     else:
         _IN_MEMORY_STORE[user_id] = data
         logger.info("Saved pet state for user '%s' to in-memory store", user_id)
-
-
-def get_firestore_client():
-    """Get the Firestore client instance (may be None if not configured)."""
-    return _FIRESTORE_CLIENT
