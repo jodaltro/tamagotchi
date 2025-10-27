@@ -262,6 +262,28 @@ def pet_state_to_dict(state: PetState) -> Dict:
             "pet_name": rel.pet_name,  # Store pet name
             "greeting_phase_completed": rel.greeting_phase_completed
         }
+    
+    # Serialize ABM components
+    abm_data = None
+    if state.memory.abm:
+        try:
+            abm_data = state.memory.abm.to_dict()
+        except Exception as e:
+            logger.warning(f"⚠️ Failed to serialize ABM: {e}")
+    
+    canon_data = None
+    if state.memory.canon:
+        try:
+            canon_data = state.memory.canon.to_dict()
+        except Exception as e:
+            logger.warning(f"⚠️ Failed to serialize Canon: {e}")
+    
+    echo_data = None
+    if state.memory.echo:
+        try:
+            echo_data = state.memory.echo.to_dict()
+        except Exception as e:
+            logger.warning(f"⚠️ Failed to serialize Echo: {e}")
 
     return {
         "drives": state.drives,
@@ -272,6 +294,9 @@ def pet_state_to_dict(state: PetState) -> Dict:
         "personality_data": personality_data,  # Store personality profile
         "communication_style": communication_style_data,  # Store communication style
         "relationship": relationship_data,  # Store relationship memory
+        "abm": abm_data,  # Store autobiographical memory
+        "canon": canon_data,  # Store pet canon
+        "echo": echo_data,  # Store echo trace
         "episodic": [
             {
                 "kind": item.kind,
@@ -347,6 +372,34 @@ def dict_to_pet_state(data: Dict) -> PetState:
             logger.info(f"✅ Restored communication style: {memory.communication_style.get_style_description()}")
         except Exception as e:
             logger.warning(f"⚠️ Failed to restore communication style: {e}")
+    
+    # Restore ABM components
+    abm_data = data.get("abm")
+    if abm_data:
+        try:
+            from .autobiographical_memory import AutobiographicalMemory
+            memory.abm = AutobiographicalMemory.from_dict(abm_data)
+            logger.info(f"✅ Restored ABM: {memory.abm}")
+        except Exception as e:
+            logger.warning(f"⚠️ Failed to restore ABM: {e}")
+    
+    canon_data = data.get("canon")
+    if canon_data:
+        try:
+            from .pet_canon import PetCanon
+            memory.canon = PetCanon.from_dict(canon_data)
+            logger.info(f"✅ Restored Canon: {memory.canon}")
+        except Exception as e:
+            logger.warning(f"⚠️ Failed to restore Canon: {e}")
+    
+    echo_data = data.get("echo")
+    if echo_data:
+        try:
+            from .echo_trace import EchoTrace
+            memory.echo = EchoTrace.from_dict(echo_data)
+            logger.info(f"✅ Restored Echo: {memory.echo}")
+        except Exception as e:
+            logger.warning(f"⚠️ Failed to restore Echo: {e}")
     
     # Create PetState
     state = PetState()
