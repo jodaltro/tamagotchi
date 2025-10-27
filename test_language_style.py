@@ -1,14 +1,15 @@
 """
 Tests for the language style analyzer and adaptive communication.
-"""
 
-import sys
-import os
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+Run from the parent directory:
+    cd /path/to/parent
+    python -m tamagotchi.test_language_style
+"""
 
 from tamagotchi.language_style_analyzer import CommunicationStyle, generate_adaptive_prompt
 from tamagotchi.virtual_pet import VirtualPet
 from tamagotchi.firestore_store import pet_state_to_dict, dict_to_pet_state
+import sys
 
 
 def test_style_detection_informal():

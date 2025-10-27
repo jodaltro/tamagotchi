@@ -2,13 +2,17 @@
 """
 Demo: Adaptive Communication System
 Shows how the pet learns and adapts to different communication styles.
+
+Run from the parent directory:
+    cd /path/to/parent
+    python -m tamagotchi.demo_adaptive_communication
 """
 
-import sys
-import os
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 from tamagotchi.virtual_pet import VirtualPet
+from tamagotchi.firestore_store import pet_state_to_dict, dict_to_pet_state
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def print_header(text):
@@ -104,8 +108,6 @@ def demo_persistence():
     """Demonstrate that style is persisted across sessions."""
     print_header("DEMO 4: Persistência do Estilo Entre Sessões")
     
-    from tamagotchi.firestore_store import pet_state_to_dict, dict_to_pet_state
-    
     # Session 1: Learn style
     print("\n📝 Sessão 1: Aprendendo o estilo")
     pet1 = VirtualPet()
@@ -173,9 +175,8 @@ Para usar com API do Gemini para respostas ainda melhores:
     except KeyboardInterrupt:
         print("\n\n👋 Demo interrompida. Até logo!")
     except Exception as e:
+        logger.exception(f"Erro durante a demonstração: {e}")
         print(f"\n❌ Erro: {e}")
-        import traceback
-        traceback.print_exc()
 
 
 if __name__ == "__main__":
