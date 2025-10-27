@@ -179,14 +179,33 @@ class VirtualPet:
         # Get previous image memories for context
         image_memories = self.state.memory.get_image_memories_with_context(top_k=3)
         
-        # Build rich context
+        # Build rich context with detailed pet parameters
         context_parts = []
+        
+        # Add personality
         if personality_desc:
             context_parts.append(f"SUA PERSONALIDADE: {personality_desc}")
+            
+            # Add personality dimensions for better context
+            if self.state.personality:
+                profile = self.state.personality.profile
+                personality_summary = f"(Curioso: {profile.openness:.1f}, Sociável: {profile.extraversion:.1f}, Gentil: {profile.agreeableness:.1f})"
+                context_parts.append(f"Resumo personalidade: {personality_summary}")
+        
+        # Add emotional state
+        drive_state = self._describe_current_state()
+        if drive_state:
+            context_parts.append(f"ESTADO EMOCIONAL: {drive_state}")
+        
+        # Add user knowledge
         if user_facts:
             context_parts.append(f"O QUE VOCÊ SABE: {'; '.join(user_facts[:10])}")
+        
+        # Add recent conversation
         if recent_memories:
             context_parts.append(f"CONVERSA RECENTE: {' | '.join(recent_memories[:3])}")
+        
+        # Add previous image memories
         if image_memories:
             img_context = [f"Imagem anterior: {img['description']}" 
                           for img in image_memories if img.get('description')]
@@ -229,12 +248,47 @@ Responda sobre a imagem:"""
         logger.info(f"🤖 Generating AI response for: '{last_message[:50]}...'")
         logger.info(f"🧠 User facts: {len(user_facts)}, Recent memories: {len(recent_memories)}")
         
-        # Build comprehensive context for AI
+        # Build comprehensive context for AI with detailed pet parameters
         context_parts = []
         
-        # Add personality
+        # Add personality with detailed dimensions
         if personality_desc:
             context_parts.append(f"SUA PERSONALIDADE: {personality_desc}")
+            
+            # Add detailed personality dimensions if available
+            if self.state.personality:
+                profile = self.state.personality.profile
+                personality_details = f"""
+Dimensões detalhadas da personalidade (0.0-1.0):
+- Abertura (curiosidade): {profile.openness:.2f}
+- Conscienciosidade (organização): {profile.conscientiousness:.2f}
+- Extroversão (sociabilidade): {profile.extraversion:.2f}
+- Amabilidade (gentileza): {profile.agreeableness:.2f}
+- Estabilidade emocional: {profile.get_emotional_stability():.2f}
+- Emotividade (expressividade): {profile.emotionality:.2f}
+- Nível de atividade (energia): {profile.activity:.2f}"""
+                context_parts.append(personality_details)
+        
+        # Add detailed drive/need state for AI to understand pet's internal state
+        drives_high = {k: v for k, v in self.state.drives.items() if v > 0.6}
+        drives_low = {k: v for k, v in self.state.drives.items() if v < 0.4}
+        if drives_high or drives_low:
+            drive_details = "NECESSIDADES/DRIVES INTERNOS:"
+            if drives_high:
+                high_list = ", ".join([f"{k}: {v:.2f}" for k, v in sorted(drives_high.items(), key=lambda x: -x[1])[:5]])
+                drive_details += f"\n- Altos: {high_list}"
+            if drives_low:
+                low_list = ", ".join([f"{k}: {v:.2f}" for k, v in sorted(drives_low.items(), key=lambda x: x[1])[:5]])
+                drive_details += f"\n- Baixos: {low_list}"
+            context_parts.append(drive_details)
+        
+        # Add traits (musical, ludico, curioso, afetuoso)
+        traits_desc = ", ".join([f"{k}: {v:.2f}" for k, v in self.state.traits.items()])
+        context_parts.append(f"SEUS TRAÇOS DESENVOLVIDOS: {traits_desc}")
+        
+        # Add current emotional state summary
+        if drive_state:
+            context_parts.append(f"ESTADO EMOCIONAL ATUAL: {drive_state}")
         
         # Add user's communication style
         if self.state.memory.communication_style and self.state.memory.communication_style.message_count > 0:
@@ -250,10 +304,6 @@ Responda sobre a imagem:"""
         if len(recent_memories) > 1:
             history = " → ".join(recent_memories[-3:])  # Last 3 exchanges
             context_parts.append(f"HISTÓRICO DA CONVERSA: {history}")
-        
-        # Add current emotional state
-        if drive_state:
-            context_parts.append(f"ESTADO ATUAL: {drive_state}")
         
         context = "\n".join(context_parts) if context_parts else None
         
