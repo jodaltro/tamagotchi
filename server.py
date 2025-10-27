@@ -116,3 +116,32 @@ async def handle_webhook(req: WebhookRequest) -> WebhookResponse:
 async def health_check() -> dict:
     """Simple health check endpoint."""
     return {"status": "ok"}
+
+
+@app.get("/metrics")
+async def get_metrics() -> dict:
+    """Get telemetry metrics for monitoring."""
+    from .telemetry import get_telemetry
+    
+    telemetry = get_telemetry()
+    summary = telemetry.get_summary()
+    
+    return {
+        "status": "ok",
+        "metrics": summary
+    }
+
+
+@app.get("/metrics/report")
+async def get_metrics_report(recent: Optional[int] = None) -> dict:
+    """Get detailed telemetry report."""
+    from .telemetry import get_telemetry
+    
+    telemetry = get_telemetry()
+    report = telemetry.get_detailed_report(recent_n=recent)
+    
+    return {
+        "status": "ok",
+        "report": report
+    }
+

@@ -43,6 +43,7 @@ curl -X POST http://localhost:8080/webhook \
 ## 📚 Documentation
 
 - **[Docker Setup Guide](DOCKER.md)** - Run the project with Docker and Docker Compose
+- **[Ollama Integration Guide](OLLAMA_INTEGRATION.md)** - Local LLM with Llama 3.2-3B via Ollama
 - **[Personality Engine Guide](PERSONALITY_ENGINE.md)** - Complete guide to the personality system
 - **[Testing Guide](TESTING.md)** - Comprehensive testing instructions
 - **[Deployment Guide](DEPLOYMENT.md)** - Production deployment to GCP
@@ -54,10 +55,14 @@ curl -X POST http://localhost:8080/webhook \
   - 8 predefined personality archetypes
   - Random unique personalities for each pet
   - Subtle personality evolution through interactions
+- **Local LLM**: Llama 3.2-3B Instruct via Ollama for privacy-focused AI
+  - Memory-guided prompts with PET-CANON/ABM/C&C context
+  - Self-Consistency Guard for response validation
+  - Comprehensive telemetry and metrics
 - **Multimodal Chat**: Text and image processing
 - **Evolving Personality**: Traits and drives that change with interactions
 - **Hybrid Memory**: Episodic, semantic, and photographic memory
-- **Natural Language**: Integration with Google Gemini for realistic responses
+- **Natural Language**: Integration with Ollama (primary) and Google Gemini (fallback)
 - **Image Recognition**: Google Cloud Vision for understanding images
 - **Persistent Storage**: Firestore integration with in-memory fallback
 - **MCP Integration**: AskIt-inspired client and Nerve-style configuration

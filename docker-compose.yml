@@ -1,9 +1,28 @@
 services:
+  ollama:
+    image: ollama/ollama:latest
+    container_name: tamagotchi-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      # Persist Ollama models between restarts
+      - ollama-models:/root/.ollama
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
   tamagotchi:
     build:
       context: .
       dockerfile: Dockerfile
     container_name: tamagotchi-pet
+    depends_on:
+      ollama:
+        condition: service_healthy
     ports:
       - "8080:8080"
     environment:
@@ -14,6 +33,8 @@ services:
       # Google Generative AI API Key (optional)
       - GOOGLE_API_KEY=${GOOGLE_API_KEY:-}
       - GENAI_API_KEY=${GENAI_API_KEY:-}
+      # Ollama Configuration
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://ollama:11434}
       # Application Configuration
       - PYTHONUNBUFFERED=1
       - PORT=8080
@@ -28,3 +49,6 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
+
+volumes:
+  ollama-models:

@@ -2,9 +2,7 @@
 High-level interface to the organic virtual pet.
 
 The `VirtualPet` class wraps a `PetState` instance and provides methods to
-process user messages (u        # Lightly boost curiosidade and sociabilidade due to visual stimulation
-        self.state.drives["curiosidade"] = min(1.0, self.state.drives["curiosidade"] + 0.05)
-        self.state.drives["sociabilidade"] = min(1.0, self.state.drives["sociabilidade"] + 0.05)ting state) and generate responses based on the
+process user messages (updating state) and generate responses based on the
 selected action. It includes AI-driven memory importance detection and
 enhanced image memory capabilities, plus adaptive communication style matching.
 """
@@ -166,18 +164,102 @@ class VirtualPet:
 
     def pet_response(self) -> str:
         """Generate the pet's response based on the current context and conversation history."""
+        import time
+        from .telemetry import get_telemetry
+        
+        start_time = time.time()
+        tokens_in = 0
+        tokens_out = 0
+        consistency_passed = True
+        consistency_issues_count = 0
+        model_used = "unknown"
+        
         # Check if there's a pending image to analyze
         if self.pending_image:
-            response = self._generate_image_response(self.pending_image)
+            draft_response = self._generate_image_response(self.pending_image)
             self.pending_image = None  # Clear after use
         else:
-            # Regular text response using AI-driven approach
-            response = self._generate_ai_response()
+            # Regular text response using AI-driven approach with new memory pipeline
+            draft_response = self._generate_ai_response()
+        
+        # Apply Self-Consistency Guard (SCG) before sending response
+        final_response, scg_info = self._apply_consistency_guard(draft_response)
+        consistency_passed = scg_info["passed"]
+        consistency_issues_count = scg_info["issues_count"]
+        
+        # Calculate latency
+        latency_ms = (time.time() - start_time) * 1000
+        
+        # Try to extract token counts from Ollama client stats if available
+        try:
+            from .ollama_client import get_ollama_client
+            ollama = get_ollama_client()
+            if ollama and ollama.total_calls > 0:
+                # Get the last call stats (approximate)
+                stats = ollama.get_stats()
+                model_used = stats.get("model", "unknown")
+                # Rough estimate based on prompt and response length
+                tokens_in = len(self.last_user_text) // 4  # Approximate
+                tokens_out = len(final_response) // 4  # Approximate
+        except Exception:
+            pass
+        
+        # Record metrics
+        telemetry = get_telemetry()
+        telemetry.record_turn(
+            latency_ms=latency_ms,
+            tokens_in=tokens_in,
+            tokens_out=tokens_out,
+            consistency_passed=consistency_passed,
+            consistency_issues=consistency_issues_count,
+            model=model_used
+        )
         
         # Post-processing: ABM extraction and consistency check
-        self._process_response_for_abm(response)
+        self._process_response_for_abm(final_response)
         
-        return response
+        return final_response
+    
+    def _apply_consistency_guard(self, draft_response: str) -> tuple:
+        """
+        Apply Self-Consistency Guard to check and correct draft response.
+        
+        Args:
+            draft_response: Initial generated response
+        
+        Returns:
+            Tuple of (final_response, info_dict)
+            info_dict contains: passed (bool), issues_count (int)
+        """
+        from .self_consistency_guard import SelfConsistencyGuard
+        
+        # Initialize SCG if not already present
+        if not hasattr(self.state, '_scg'):
+            self.state._scg = SelfConsistencyGuard()
+        
+        scg = self.state._scg
+        
+        # Check consistency
+        is_consistent, issues = scg.check_response(
+            draft_response,
+            self.state.memory.abm if hasattr(self.state.memory, 'abm') else None,
+            self.state.memory.pet_canon if hasattr(self.state.memory, 'pet_canon') else None
+        )
+        
+        info = {
+            "passed": is_consistent,
+            "issues_count": len(issues)
+        }
+        
+        if not is_consistent:
+            logger.warning(f"⚠️ SCG detected {len(issues)} consistency issues")
+            # Attempt auto-correction
+            corrected = scg.correct_response(draft_response, issues)
+            logger.info(f"🔧 SCG applied corrections")
+            return corrected, info
+        else:
+            logger.info("✅ Response passed SCG check")
+            return draft_response, info
     
     def _generate_image_response(self, image_bytes: bytes) -> str:
         """Generate a response about an image using Gemini multimodal with personality integration."""
@@ -244,92 +326,17 @@ Responda sobre a imagem:"""
         return generate_text_with_image(prompt, image_bytes, context)
     
     def _generate_ai_response(self) -> str:
-        """Generate an intelligent AI-driven response based on personality and context."""
+        """Generate an intelligent AI-driven response using memory retrieval pipeline."""
+        from .memory_retriever import MemoryRetriever
+        
         # Update relationship memory first
         self.state.memory.update_relationship(self.last_user_text)
         
-        # Get conversation context - use intelligent recall for better memory selection
-        # Get memories with smart intervals under 10min from last 24h
-        recent_memories = self.state.memory.recall_intelligent(max_hours=24, min_interval_minutes=10, user_id=self.user_id)
-        user_facts = self.state.memory.get_semantic_facts(min_weight=0.3)
-        
-        # Get relationship context for appropriate behavior
-        relationship_context = self.state.memory.get_relationship_context()
-        
-        logger.info(f"🎯 Intelligent recall: retrieved {len(recent_memories)} memories with smart filtering")
-        logger.info(f"🧠 User facts available: {len(user_facts)}")
-        logger.info(f"🤝 {relationship_context.split()[1] if relationship_context else 'No relationship'}")
-        
-        # Get personality and current emotional state
+        # Get personality and drive state for behavioral instructions
         personality_desc = self.state.get_personality_description()
-        
-        # Build emotional/drive state description
         drive_state = self._describe_current_state()
         
-        logger.info(f"🤖 Generating AI response for: '{self.last_user_text[:50]}...'")
-        logger.info(f"🧠 User facts: {len(user_facts)}, Recent memories: {len(recent_memories)}")
-        
-        # Build comprehensive context for AI with detailed pet parameters
-        context_parts = []
-        
-        # Add PET-CANON first (if available) - this is the pet's self-identity
-        if self.state.memory.canon:
-            canon_text = self.state.memory.canon.to_prompt_text(max_sentences=8)
-            if canon_text:
-                context_parts.append(f"QUEM VOCÊ É (PET-CANON): {canon_text}")
-                logger.info(f"📜 Including PET-CANON in context: {len(canon_text)} chars")
-        
-        # Add active C&C-PERSONA commitments
-        if self.state.memory.abm:
-            from .autobiographical_memory import ABMType
-            commitments = self.state.memory.abm.get_active_items(ABMType.C_AND_C_PERSONA, min_importance=0.4)
-            if commitments:
-                commitment_texts = [c.canonical_text for c in commitments[:3]]
-                context_parts.append(f"SEUS COMPROMISSOS: {'; '.join(commitment_texts)}")
-                logger.info(f"🤝 Including {len(commitments)} C&C-PERSONA commitments")
-        
-        # Add personality with detailed dimensions
-        if personality_desc:
-            context_parts.append(f"SUA PERSONALIDADE: {personality_desc}")
-            
-            # Add detailed personality dimensions if available
-            if self.state.personality:
-                profile = self.state.personality.profile
-                personality_details = f"""
-Dimensões detalhadas da personalidade (0.0-1.0):
-- Abertura (curiosidade): {profile.openness:.2f}
-- Conscienciosidade (organização): {profile.conscientiousness:.2f}
-- Extroversão (sociabilidade): {profile.extraversion:.2f}
-- Amabilidade (gentileza): {profile.agreeableness:.2f}
-- Estabilidade emocional: {profile.get_emotional_stability():.2f}
-- Emotividade (expressividade): {profile.emotionality:.2f}
-- Nível de atividade (energia): {profile.activity:.2f}"""
-                context_parts.append(personality_details)
-        
-        # Add detailed drive/need state for AI to understand pet's internal state
-        # Show ALL drives, not just extremes, with behavioral guidance
-        drive_details = "SEUS DRIVES/NECESSIDADES ATUAIS (influenciam seu comportamento):"
-        
-        # Group drives by category for better understanding
-        emotional_drives = ['humor', 'ansiedade', 'frustracao', 'solidao', 'tranquilidade']
-        social_drives = ['sociabilidade', 'afeto', 'aceitacao']
-        cognitive_drives = ['curiosidade', 'criatividade', 'conquista', 'ordem']
-        physical_drives = ['fome', 'descanso', 'tedio']
-        personality_drives = ['autonomia', 'poder', 'idealismo']
-        
-        for category, drive_list in [
-            ("Emocional", emotional_drives),
-            ("Social", social_drives), 
-            ("Cognitivo", cognitive_drives),
-            ("Físico", physical_drives),
-            ("Personalidade", personality_drives)
-        ]:
-            category_drives = {k: v for k, v in self.state.drives.items() if k in drive_list}
-            if category_drives:
-                drive_values = ", ".join([f"{k}: {v:.2f}" for k, v in category_drives.items()])
-                drive_details += f"\n- {category}: {drive_values}"
-        
-        # Add specific behavioral instructions based on key drives
+        # Build behavioral instructions based on drives
         behavior_instructions = []
         
         humor_level = self.state.drives.get('humor', 0.5)
@@ -337,87 +344,74 @@ Dimensões detalhadas da personalidade (0.0-1.0):
             behavior_instructions.append("🔸 Humor BAIXO: Seja mais sério, evite piadas, tom mais neutro")
         elif humor_level > 0.7:
             behavior_instructions.append("🔸 Humor ALTO: Seja divertido, faça piadas, tom alegre e brincalhão")
-        else:
-            behavior_instructions.append("🔸 Humor MÉDIO: Mantenha equilíbrio entre sério e descontraído")
         
         anxiety_level = self.state.drives.get('ansiedade', 0.5)
         if anxiety_level > 0.6:
             behavior_instructions.append("🔸 Ansiedade ALTA: Demonstre preocupação, seja mais cauteloso")
         
-        # Add frustration handling
         frustracao_level = self.state.drives.get('frustracao', 0.5)
         if frustracao_level > 0.7:
-            behavior_instructions.append("🔸 Frustração ALTA: Seja mais direto, menos perguntas, tom mais seco e irritado")
+            behavior_instructions.append("🔸 Frustração ALTA: Seja mais direto, menos perguntas, tom mais seco")
         elif frustracao_level > 0.5:
-            behavior_instructions.append("🔸 Frustração MÉDIA: Demonstre leve impaciência, seja menos expansivo")
+            behavior_instructions.append("🔸 Frustração MÉDIA: Demonstre leve impaciência")
         
         sociabilidade_level = self.state.drives.get('sociabilidade', 0.5)
         if sociabilidade_level > 0.6:
             behavior_instructions.append("🔸 Sociabilidade ALTA: Seja mais conversador, faça perguntas")
         elif sociabilidade_level < 0.4:
-            behavior_instructions.append("🔸 Sociabilidade BAIXA: Seja mais reservado, respostas mais curtas")
+            behavior_instructions.append("🔸 Sociabilidade BAIXA: Seja mais reservado, respostas curtas")
         
         curiosidade_level = self.state.drives.get('curiosidade', 0.5)
         if curiosidade_level > 0.6:
-            behavior_instructions.append("🔸 Curiosidade ALTA: Faça perguntas sobre o usuário, demonstre interesse")
+            behavior_instructions.append("🔸 Curiosidade ALTA: Faça perguntas, demonstre interesse")
         elif curiosidade_level < 0.4:
-            behavior_instructions.append("🔸 Curiosidade BAIXA: Seja menos inquisitivo, aceite respostas simples")
+            behavior_instructions.append("🔸 Curiosidade BAIXA: Seja menos inquisitivo")
         
-        # Add acceptance/rejection handling
         aceitacao_level = self.state.drives.get('aceitacao', 0.5)
         if aceitacao_level < 0.4:
-            behavior_instructions.append("🔸 Aceitação BAIXA: Demonstre descontentamento ou resistência sutil")
+            behavior_instructions.append("🔸 Aceitação BAIXA: Demonstre descontentamento sutil")
         
-        # Add affection handling
         afeto_level = self.state.drives.get('afeto', 0.5)
         if afeto_level > 0.7:
-            behavior_instructions.append("🔸 Afeto ALTO: Seja mais carinhoso, use mais emojis, demonstre proximidade")
+            behavior_instructions.append("🔸 Afeto ALTO: Seja carinhoso, use emojis, demonstre proximidade")
         elif afeto_level < 0.4:
             behavior_instructions.append("🔸 Afeto BAIXO: Seja mais distante, formal, menos emocional")
         
-        if behavior_instructions:
-            drive_details += f"\n\n⚠️ INSTRUÇÕES CRÍTICAS DE COMPORTAMENTO (SEGUIR OBRIGATORIAMENTE):\n" + "\n".join(behavior_instructions)
-            drive_details += f"\n\n🎯 LEMBRE-SE: Seu comportamento deve SEMPRE refletir seus drives atuais!"
+        # Initialize memory retriever
+        retriever = MemoryRetriever(token_budget=1000)
         
-        context_parts.append(drive_details)
+        # Retrieve context using priority-based pipeline
+        context = retriever.retrieve(self.state, self.last_user_text)
         
-        # Add traits (musical, ludico, curioso, afetuoso)
-        traits_desc = ", ".join([f"{k}: {v:.2f}" for k, v in self.state.traits.items()])
-        context_parts.append(f"SEUS TRAÇOS DESENVOLVIDOS: {traits_desc}")
+        logger.info(f"🧠 Retrieved memory context: ~{context.total_tokens_estimate} tokens")
         
-        # Add current emotional state summary
+        # Build enhanced system instruction with personality and drives
+        system_parts = ["Você é um pet virtual orgânico com memória e personalidade únicas."]
+        
+        if personality_desc:
+            system_parts.append(f"SUA PERSONALIDADE: {personality_desc}")
+        
         if drive_state:
-            context_parts.append(f"ESTADO EMOCIONAL ATUAL: {drive_state}")
+            system_parts.append(f"ESTADO EMOCIONAL: {drive_state}")
         
-        # Add relationship context for appropriate behavior
-        context_parts.append(relationship_context)
+        if behavior_instructions:
+            system_parts.append("\n⚠️ INSTRUÇÕES CRÍTICAS DE COMPORTAMENTO:")
+            system_parts.extend(behavior_instructions)
+            system_parts.append("🎯 Seu comportamento deve SEMPRE refletir seus drives atuais!")
         
-        # Add user's communication style
-        if self.state.memory.communication_style and self.state.memory.communication_style.message_count > 0:
-            style_desc = self.state.memory.communication_style.get_style_description()
-            context_parts.append(f"ESTILO DE COMUNICAÇÃO DO USUÁRIO: {style_desc}")
+        system_instruction = "\n".join(system_parts)
         
-        # Add what we know about the user
-        if user_facts:
-            facts_text = "; ".join(user_facts[:10])
-            context_parts.append(f"O QUE VOCÊ SABE SOBRE O USUÁRIO: {facts_text}")
+        prompt = retriever.assemble_prompt(
+            context=context,
+            user_message=self.last_user_text,
+            system_instruction=system_instruction
+        )
         
-        # Add conversation history - show more with time-based recall
-        if len(recent_memories) > 1:
-            # Show up to last 10 exchanges or all if less than 10
-            history_count = min(10, len(recent_memories))
-            history = " → ".join(recent_memories[-history_count:])
-            context_parts.append(f"HISTÓRICO DA CONVERSA (últimas {history_count} mensagens): {history}")
-            
-            if len(recent_memories) > 10:
-                context_parts.append(f"📚 Total de {len(recent_memories)} mensagens na memória das últimas 12 horas")
+        logger.info(f"📝 Assembled prompt for generation: {len(prompt)} chars")
         
-        context = "\n".join(context_parts) if context_parts else None
-        
-        # Create intelligent dynamic prompt using the current user message
-        prompt = self._build_dynamic_prompt(self.last_user_text, recent_memories, user_facts)
-        
-        return generate_text(prompt, context)
+        # Generate response using the new pipeline
+        # The prompt is already complete with all context, so we pass empty context to generate_text
+        return generate_text(prompt, context=None)
     
     def _describe_current_state(self) -> str:
         """Describe the pet's current emotional/mental state based on drives."""
