@@ -252,7 +252,6 @@ Responda sobre a imagem:"""
         # Get memories with smart intervals under 10min from last 24h
         recent_memories = self.state.memory.recall_intelligent(max_hours=24, min_interval_minutes=10, user_id=self.user_id)
         user_facts = self.state.memory.get_semantic_facts(min_weight=0.3)
-        last_message = recent_memories[0] if recent_memories else "Primeira interação"
         
         # Get relationship context for appropriate behavior
         relationship_context = self.state.memory.get_relationship_context()
@@ -267,7 +266,7 @@ Responda sobre a imagem:"""
         # Build emotional/drive state description
         drive_state = self._describe_current_state()
         
-        logger.info(f"🤖 Generating AI response for: '{last_message[:50]}...'")
+        logger.info(f"🤖 Generating AI response for: '{self.last_user_text[:50]}...'")
         logger.info(f"🧠 User facts: {len(user_facts)}, Recent memories: {len(recent_memories)}")
         
         # Build comprehensive context for AI with detailed pet parameters
@@ -341,9 +340,16 @@ Dimensões detalhadas da personalidade (0.0-1.0):
         else:
             behavior_instructions.append("🔸 Humor MÉDIO: Mantenha equilíbrio entre sério e descontraído")
         
-        anxiety_level = self.state.drives.get('anxiety', 0.5)
+        anxiety_level = self.state.drives.get('ansiedade', 0.5)
         if anxiety_level > 0.6:
             behavior_instructions.append("🔸 Ansiedade ALTA: Demonstre preocupação, seja mais cauteloso")
+        
+        # Add frustration handling
+        frustracao_level = self.state.drives.get('frustracao', 0.5)
+        if frustracao_level > 0.7:
+            behavior_instructions.append("🔸 Frustração ALTA: Seja mais direto, menos perguntas, tom mais seco e irritado")
+        elif frustracao_level > 0.5:
+            behavior_instructions.append("🔸 Frustração MÉDIA: Demonstre leve impaciência, seja menos expansivo")
         
         sociabilidade_level = self.state.drives.get('sociabilidade', 0.5)
         if sociabilidade_level > 0.6:
@@ -354,9 +360,24 @@ Dimensões detalhadas da personalidade (0.0-1.0):
         curiosidade_level = self.state.drives.get('curiosidade', 0.5)
         if curiosidade_level > 0.6:
             behavior_instructions.append("🔸 Curiosidade ALTA: Faça perguntas sobre o usuário, demonstre interesse")
+        elif curiosidade_level < 0.4:
+            behavior_instructions.append("🔸 Curiosidade BAIXA: Seja menos inquisitivo, aceite respostas simples")
+        
+        # Add acceptance/rejection handling
+        aceitacao_level = self.state.drives.get('aceitacao', 0.5)
+        if aceitacao_level < 0.4:
+            behavior_instructions.append("🔸 Aceitação BAIXA: Demonstre descontentamento ou resistência sutil")
+        
+        # Add affection handling
+        afeto_level = self.state.drives.get('afeto', 0.5)
+        if afeto_level > 0.7:
+            behavior_instructions.append("🔸 Afeto ALTO: Seja mais carinhoso, use mais emojis, demonstre proximidade")
+        elif afeto_level < 0.4:
+            behavior_instructions.append("🔸 Afeto BAIXO: Seja mais distante, formal, menos emocional")
         
         if behavior_instructions:
-            drive_details += f"\n\nCOMPORTAMENTO BASEADO NOS DRIVES:\n" + "\n".join(behavior_instructions)
+            drive_details += f"\n\n⚠️ INSTRUÇÕES CRÍTICAS DE COMPORTAMENTO (SEGUIR OBRIGATORIAMENTE):\n" + "\n".join(behavior_instructions)
+            drive_details += f"\n\n🎯 LEMBRE-SE: Seu comportamento deve SEMPRE refletir seus drives atuais!"
         
         context_parts.append(drive_details)
         
@@ -393,8 +414,8 @@ Dimensões detalhadas da personalidade (0.0-1.0):
         
         context = "\n".join(context_parts) if context_parts else None
         
-        # Create intelligent dynamic prompt
-        prompt = self._build_dynamic_prompt(last_message, recent_memories, user_facts)
+        # Create intelligent dynamic prompt using the current user message
+        prompt = self._build_dynamic_prompt(self.last_user_text, recent_memories, user_facts)
         
         return generate_text(prompt, context)
     
@@ -424,11 +445,11 @@ Dimensões detalhadas da personalidade (0.0-1.0):
         
         return ", ".join(descriptions) if descriptions else "equilibrado"
     
-    def _build_dynamic_prompt(self, last_message: str, recent_memories: List[str], user_facts: List[str]) -> str:
+    def _build_dynamic_prompt(self, current_user_message: str, recent_memories: List[str], user_facts: List[str]) -> str:
         """Build a dynamic prompt based on conversation state, personality, and user's communication style."""
         # Check conversation stage
         is_first_interaction = len(recent_memories) <= 1
-        is_question = last_message.strip().endswith('?')
+        is_question = current_user_message.strip().endswith('?')
         
         # Get user's communication style for adaptation
         user_style = self.state.memory.communication_style
@@ -464,18 +485,40 @@ REGRAS DE OURO:
             relationship_stage = self.state.memory.relationship.relationship_stage
             greeting_done = self.state.memory.relationship.greeting_phase_completed
         
-        if is_first_interaction:
+        # Check for negative feedback first
+        negative_feedback_indicators = [
+            "não gostei", "nao gostei", "não gosto", "nao gosto", 
+            "ruim", "chato", "errado", "esquisito", "repetitivo",
+            "sem graça", "bobeira", "idiota", "muda", "pare",
+            "chega", "quantas perguntas", "muitas perguntas", 
+            "para de perguntar", "não vou mais responder", "nao vou mais responder"
+        ]
+        is_negative_feedback = any(indicator in current_user_message.lower() for indicator in negative_feedback_indicators)
+        
+        if is_negative_feedback:
+            situation = f"""
+
+SITUAÇÃO: Feedback negativo do usuário
+Mensagem: "{current_user_message}"
+
+ATENÇÃO: O usuário demonstrou descontentamento! 
+- RECONHEÇA o que ele disse e PEÇA DESCULPAS sinceramente
+- MUDE completamente sua abordagem anterior
+- Seja mais atento e adaptativo
+- Pergunte como pode melhorar ou o que ele prefere
+- NÃO ignore ou repita a mesma coisa!"""
+        elif is_first_interaction:
             situation = f"""
 
 SITUAÇÃO: Primeira vez conversando
-Mensagem: "{last_message}"
+Mensagem: "{current_user_message}"
 
 Responda naturalmente, se apresente com autenticidade!"""
         elif is_question:
             situation = f"""
 
 SITUAÇÃO: Pergunta do usuário
-"{last_message}"
+"{current_user_message}"
 
 Responda de forma natural. Se souber (baseado no que conhece), responda. Se não souber, seja honesto de forma descontraída."""
         else:
@@ -487,7 +530,7 @@ Responda de forma natural. Se souber (baseado no que conhece), responda. Se não
                 situation = f"""
 
 SITUAÇÃO: Papo contínuo com alguém que você já conhece
-Mensagem: "{last_message}"
+Mensagem: "{current_user_message}"
 
 IMPORTANTE: Vocês já se cumprimentaram antes! NÃO repita "Olá" ou "Oi"!
 Responda diretamente ao que a pessoa disse. Seja natural e conversacional."""
@@ -495,14 +538,14 @@ Responda diretamente ao que a pessoa disse. Seja natural e conversacional."""
                 situation = f"""
 
 SITUAÇÃO: Conhecendo melhor a pessoa
-Mensagem: "{last_message}"
+Mensagem: "{current_user_message}"
 
 Mostre que você lembra da pessoa e das conversas anteriores. Seja natural!"""
             else:
                 situation = f"""
 
 SITUAÇÃO: Primeiras interações
-Mensagem: "{last_message}"
+Mensagem: "{current_user_message}"
 
 Responda naturalmente. Se fizer sentido, faça uma pergunta para conhecer melhor."""
         

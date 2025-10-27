@@ -263,6 +263,13 @@ class MemoryStore:
         """Atualiza a memória de relacionamento com base na interação."""
         current_time = datetime.utcnow()
         
+        # Define name patterns and lower message for all code paths
+        lower_message = text.lower()
+        name_patterns = [
+            "vou te chamar de", "te chamar de", "seu nome é", "você se chama",
+            "chamarei de", "chamarei você de", "te chamo de", "nome será"
+        ]
+        
         # Inicializar relacionamento se for primeira vez
         if self.relationship is None:
             self.relationship = RelationshipMemory(
@@ -275,13 +282,6 @@ class MemoryStore:
             # Atualizar relacionamento existente
             self.relationship.total_interactions += 1
             self.relationship.last_interaction = current_time
-            
-            # Define name patterns first
-            lower_message = text.lower()
-            name_patterns = [
-                "vou te chamar de", "te chamar de", "seu nome é", "você se chama",
-                "chamarei de", "chamarei você de", "te chamo de", "nome será"
-            ]
             
             # Update familiarity (gradual increase with better progression)
             base_increase = 0.02  # Increased from 0.01
