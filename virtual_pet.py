@@ -332,6 +332,51 @@ Responda sobre a imagem:"""
         # Update relationship memory first
         self.state.memory.update_relationship(self.last_user_text)
         
+        # Get personality and drive state for behavioral instructions
+        personality_desc = self.state.get_personality_description()
+        drive_state = self._describe_current_state()
+        
+        # Build behavioral instructions based on drives
+        behavior_instructions = []
+        
+        humor_level = self.state.drives.get('humor', 0.5)
+        if humor_level < 0.3:
+            behavior_instructions.append("🔸 Humor BAIXO: Seja mais sério, evite piadas, tom mais neutro")
+        elif humor_level > 0.7:
+            behavior_instructions.append("🔸 Humor ALTO: Seja divertido, faça piadas, tom alegre e brincalhão")
+        
+        anxiety_level = self.state.drives.get('ansiedade', 0.5)
+        if anxiety_level > 0.6:
+            behavior_instructions.append("🔸 Ansiedade ALTA: Demonstre preocupação, seja mais cauteloso")
+        
+        frustracao_level = self.state.drives.get('frustracao', 0.5)
+        if frustracao_level > 0.7:
+            behavior_instructions.append("🔸 Frustração ALTA: Seja mais direto, menos perguntas, tom mais seco")
+        elif frustracao_level > 0.5:
+            behavior_instructions.append("🔸 Frustração MÉDIA: Demonstre leve impaciência")
+        
+        sociabilidade_level = self.state.drives.get('sociabilidade', 0.5)
+        if sociabilidade_level > 0.6:
+            behavior_instructions.append("🔸 Sociabilidade ALTA: Seja mais conversador, faça perguntas")
+        elif sociabilidade_level < 0.4:
+            behavior_instructions.append("🔸 Sociabilidade BAIXA: Seja mais reservado, respostas curtas")
+        
+        curiosidade_level = self.state.drives.get('curiosidade', 0.5)
+        if curiosidade_level > 0.6:
+            behavior_instructions.append("🔸 Curiosidade ALTA: Faça perguntas, demonstre interesse")
+        elif curiosidade_level < 0.4:
+            behavior_instructions.append("🔸 Curiosidade BAIXA: Seja menos inquisitivo")
+        
+        aceitacao_level = self.state.drives.get('aceitacao', 0.5)
+        if aceitacao_level < 0.4:
+            behavior_instructions.append("🔸 Aceitação BAIXA: Demonstre descontentamento sutil")
+        
+        afeto_level = self.state.drives.get('afeto', 0.5)
+        if afeto_level > 0.7:
+            behavior_instructions.append("🔸 Afeto ALTO: Seja carinhoso, use emojis, demonstre proximidade")
+        elif afeto_level < 0.4:
+            behavior_instructions.append("🔸 Afeto BAIXO: Seja mais distante, formal, menos emocional")
+        
         # Initialize memory retriever
         retriever = MemoryRetriever(token_budget=1000)
         
@@ -340,8 +385,21 @@ Responda sobre a imagem:"""
         
         logger.info(f"🧠 Retrieved memory context: ~{context.total_tokens_estimate} tokens")
         
-        # Build the prompt using the retriever
-        system_instruction = "Você é um pet virtual orgânico com memória e personalidade únicas. Responda de forma natural e autêntica, baseando-se em quem você é e no que sabe sobre o usuário."
+        # Build enhanced system instruction with personality and drives
+        system_parts = ["Você é um pet virtual orgânico com memória e personalidade únicas."]
+        
+        if personality_desc:
+            system_parts.append(f"SUA PERSONALIDADE: {personality_desc}")
+        
+        if drive_state:
+            system_parts.append(f"ESTADO EMOCIONAL: {drive_state}")
+        
+        if behavior_instructions:
+            system_parts.append("\n⚠️ INSTRUÇÕES CRÍTICAS DE COMPORTAMENTO:")
+            system_parts.extend(behavior_instructions)
+            system_parts.append("🎯 Seu comportamento deve SEMPRE refletir seus drives atuais!")
+        
+        system_instruction = "\n".join(system_parts)
         
         prompt = retriever.assemble_prompt(
             context=context,
